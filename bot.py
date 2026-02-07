@@ -1,7 +1,7 @@
 import asyncio
 from pyrogram import Client, idle
 from config import Config
-from database import initialize_database # The function we fixed in the previous step
+from database.__init__ import initialize_database # The function we fixed in the previous step
 from database.connection import db
 
 async def start_nexora():
