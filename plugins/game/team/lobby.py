@@ -10,6 +10,7 @@ from pyrogram.errors import ChatAdminRequired
 # ───────────── PYROGRAM ─────────────
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ───────────── IMAGE / PIL ─────────────
 from PIL import Image, ImageDraw, ImageFont
@@ -44,7 +45,19 @@ NAME_FONT = "Assets/namefont.ttf"
 # --- SUPERFAST CACHING ---
 MEMBERS_THUMB_COUNTER = {}  # chat_id -> count
 AVATAR_CACHE = {}           # user_id -> {"path": path, "time": timestamp}
-CACHE_TTL = 600             # 10 Minutes cache for avatars
+CACHE_TTL = 600      
+
+async def ensure_user_exists(conn, user):
+    await conn.execute(
+        """
+        INSERT INTO users (user_id, first_name)
+        VALUES ($1, $2)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        user.id,
+        user.first_name or "Player"
+    )
+# 10 Minutes cache for avatars
 
 def generate_members_thumbnail(
     cap_a_name: str,
@@ -373,7 +386,7 @@ async def join_team_logic(client, message):
     cmd = message.command[0].lower()
     target_team = "A" if "teama" in cmd else "B"
 
-    # 1️⃣ CHECK: Already in THIS match (must come FIRST)
+    # 1️⃣ CHECK: Already in THIS match
     if (
         user.id in match["teams"]["A"]["players"]
         or user.id in match["teams"]["B"]["players"]
@@ -413,14 +426,20 @@ async def join_team_logic(client, message):
             "Missed the bus, maybe next match 🚌💨"
         )
 
-    # 4️⃣ ADD PLAYER (Memory + DB)
+    # 4️⃣ ADD PLAYER (Memory + DB) — FIXED
+    async with db.pool.acquire() as conn:
+        # ✅ CRITICAL FIX: ensure user exists in `users` table
+        await ensure_user_exists(conn, user)
+
+        # DB insert (FK safe now)
+        await conn.execute(
+            "INSERT INTO game_players (game_id, user_id, team) VALUES ($1, $2, $3)",
+            match["game_id"], user.id, target_team
+        )
+
+    # 🔄 Sync Memory
     match["teams"][target_team]["players"].append(user.id)
     match["user_cache"][user.id] = user.first_name
-
-    await db.pool.execute(
-        "INSERT INTO game_players (game_id, user_id, team) VALUES ($1, $2, $3)",
-        match["game_id"], user.id, target_team
-    )
 
     # 🎙️ RANDOM CRICKET JOIN COMMENTARY
     join_messages = [
@@ -789,14 +808,14 @@ async def add_player(client, message):
         for target in targets:
             try:
                 if isinstance(target, str):
-                    failed_details.append(f"• <code>{target}</code> — who dis? 🤨")
+                    failed_details.append(f"• <code>{target}</code> — invalid user")
                     continue
 
                 # 🚦 Already playing somewhere else?
                 other = await user_in_other_game(target.id, chat_id)
                 if other:
                     failed_details.append(
-                        f"• {target.first_name} — busy playing elsewhere 🎮"
+                        f"• {target.first_name} — already in another match"
                     )
                     continue
 
@@ -807,9 +826,12 @@ async def add_player(client, message):
                 )
                 if exists:
                     failed_details.append(
-                        f"• {target.first_name} — already on the team 😅"
+                        f"• {target.first_name} — already added"
                     )
                     continue
+
+                # ✅ FK FIX: ensure user exists (NO /start needed)
+                await ensure_user_exists(conn, target)
 
                 # 🧠 Insert DB
                 await conn.execute(
@@ -838,35 +860,40 @@ async def add_player(client, message):
                 match["user_cache"][target.id] = target.first_name or "Player"
                 success_list.append(target.mention)
 
-            except Exception:
-                failed_details.append(f"• {target} — system had a hiccup 🤕")
+            except Exception as e:
+                print("ADD PLAYER ERROR:", e)
+                failed_details.append(
+                    f"• {target.first_name if hasattr(target, 'first_name') else target} — failed"
+                )
 
     # ── RESPONSE ──
 
     # ✅ Single add → clean & friendly
     if len(success_list) == 1 and len(targets) == 1:
         return await message.reply_text(
-            f"🎉 {success_list[0]} is in Team {team}!\n"
-            "Pads on, match vibes activated 🏏",
+            f"✅ {success_list[0]} added to <b>Team {team}</b>.\n"
+            "All set. Let’s play 🏏",
             parse_mode=ParseMode.HTML
         )
 
-    # 📊 Bulk add report
+    # 🎨 CLEAN MULTI-ADD SUMMARY (AESTHETIC)
     team_icon = "🌊" if team == "A" else "🔥"
 
     res = (
-        f"📊 <b>PLAYER ADD SUMMARY</b>\n"
-        f"──────────────\n"
-        f"{team_icon} <b>Team:</b> {team}\n\n"
+        f"{team_icon} <b>Team {team} Update</b>\n"
+        f"────────────\n"
     )
 
     if success_list:
-        res += "✅ <b>Added:</b>\n" + ", ".join(success_list) + "\n\n"
+        res += "✅ <b>Added</b>\n"
+        for p in success_list:
+            res += f"• {p}\n"
+        res += "\n"
 
     if failed_details:
-        res += "⚠️ <b>Skipped:</b>\n" + "\n".join(failed_details)
-
-    res += "\n──────────────"
+        res += "⚠️ <b>Skipped</b>\n"
+        for f in failed_details:
+            res += f"{f}\n"
 
     await message.reply_text(
         res,
