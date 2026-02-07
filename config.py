@@ -6,11 +6,11 @@ class Config:
     BOT_TOKEN = "8264820868:AAGfpaMQ0uiO_N0rfCskR6Jfq0uTqhoe-Kk"
 
     DATABASE_URL = (
-        "postgresql://neondb_owner:npg_yNzl0oqVOw4M@ep-billowing-frost-a186v8hy.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+        "postgresql://neondb_owner:npg_E9BGHRvVljt3@ep-still-wind-a1ko7gew.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
     )
     BOT_USERNAME = "@CricketLegacy2Bot"
-    SUPPORT_GROUP = "https://t.me/CLG_fun_zone"
-    PLAY_ZONE_INFO = "https://t.me/CLG_fun_zone"
+    SUPPORT_GROUP = "https://t.me/+joF1bCfiMT9jMzVh"
+    PLAY_ZONE_INFO = "https://t.me/+joF1bCfiMT9jMzVh"
     OWNER_IDS = {8084629653} 
 
     NVIDIA_API_KEY = "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"
