@@ -1,0 +1,454 @@
+import math
+from database.connection import db
+import os
+import io
+from PIL import Image, ImageDraw, ImageFont
+
+# ───────────────── CONFIGURATION ─────────────────
+SCORE_BG = "Assets/score.jpeg"
+FONT_PATH = "Assets/fonts.ttf"
+MAIN_SIZE = 110      # Score size
+LABEL_SIZE = 40      # Target size
+INFO_SIZE = 55       # Overs size
+
+# ───────────────── IMAGE GENERATOR ─────────────────
+
+def build_score_image(match_data):
+    """
+    ULTIMATE FIX: Standardizes coordinates, applies purple text color,
+    recovers background gracefully if missing, and ensures buffer return.
+    """
+    # 1. Background Initialization with Error Recovery
+    try:
+        if not os.path.exists(SCORE_BG):
+            # Creates a dark-themed fallback if the JPEG is missing
+            img = Image.new("RGBA", (1280, 720), color=(20, 24, 35, 255)) 
+        else:
+            img = Image.open(SCORE_BG).convert("RGBA")
+    except Exception:
+        img = Image.new("RGBA", (1280, 720), color=(20, 24, 35, 255))
+
+    draw = ImageDraw.Draw(img)
+
+    # 2. Font Loading (Safe Handling)
+    try:
+        font_main = ImageFont.truetype(FONT_PATH, MAIN_SIZE)
+        font_sub = ImageFont.truetype(FONT_PATH, LABEL_SIZE)
+        font_info = ImageFont.truetype(FONT_PATH, INFO_SIZE)
+    except Exception:
+        # Prevents crash if font file is corrupted or missing
+        font_main = font_sub = font_info = ImageFont.load_default()
+
+    def draw_centered_text(text, font, x, y, fill="white", stroke_fill=None, stroke_width=0):
+        bbox = draw.textbbox((0, 0), str(text), font=font)
+        w = bbox[2] - bbox[0]
+        h = bbox[3] - bbox[1]
+        draw.text((x - w/2, y - h/2), str(text), font=font, fill=fill, 
+                  stroke_width=stroke_width, stroke_fill=stroke_fill)
+
+    # 3. YTB (Yet To Bat) & Score Logic
+    score_a = str(match_data.get("score_a", "0/0"))
+    score_b = str(match_data.get("score_b", "0/0"))
+
+    # Logic to show which team is yet to bat during Innings 1
+    if match_data.get('innings', 1) == 1:
+        if match_data.get('batting_team') == "A":
+            score_b = "YTB"
+        else:
+            score_a = "YTB"
+
+    # 4. Positions, Alignment and Colors
+    center_x = 640
+
+    # Team A (Left Slot): Adjusted per requirement
+    left_slot_x = 450  
+    left_slot_y = 370  
+
+    # Team B (Right Slot): Adjusted per requirement
+    right_slot_x = 980  
+    right_slot_y = 370  
+
+    y_overs = 580  
+    y_target = 650
+
+    # Text Color Setting
+    text_purple = "#8A2BE2" # BlueViolet
+
+    # Draw Primary Scores
+    draw_centered_text(score_a, font_main, left_slot_x, left_slot_y, fill=text_purple, stroke_width=2, stroke_fill="black")
+    draw_centered_text(score_b, font_main, right_slot_x, right_slot_y, fill=text_purple, stroke_width=2, stroke_fill="black")
+
+    # Draw Overs Metadata
+    overs_txt = f"OVERS: {match_data.get('overs', '0.0')} / {match_data.get('max_overs', '0')}"
+    draw_centered_text(overs_txt, font_info, center_x, y_overs, fill="#00FFCC")
+
+    # Draw Target Info (Second Innings Only)
+    if match_data.get('innings') == 2 and match_data.get('target'):
+        target_txt = f"TARGET: {match_data['target']}"
+        draw_centered_text(target_txt, font_sub, center_x, y_target, fill="#FF4444")
+
+    # 5. Export to Buffer
+    buf = io.BytesIO()
+    # JPEG doesn't support alpha, so convert to RGB
+    img.convert("RGB").save(buf, format="JPEG", quality=95)
+    buf.seek(0)
+
+    # Clean up memory
+    img.close()
+
+    return buf
+    
+def build_score_caption(match, host_name):
+    """
+    UPGRADED SCORE CAPTION
+    - No design changes
+    - Adds intelligence & broadcast-level insights
+    - Safe against crashes
+    """
+
+    # ───────── BASIC DATA ─────────
+    bat = match.get("batting_team", "A")
+    bowl = match.get("bowling_team", "B")
+
+    teams = match.get("teams", {})
+    bat_team = teams.get(bat, {"runs": 0, "wickets": 0, "balls": 0})
+    bowl_team = teams.get(bowl, {"runs": 0, "wickets": 0, "balls": 0})
+
+    actual_balls = bat_team.get("balls", 0)
+    runs = bat_team.get("runs", 0)
+    wickets = bat_team.get("wickets", 0)
+
+    overs_formatted = f"{actual_balls // 6}.{actual_balls % 6}"
+    crr = round((runs * 6 / actual_balls), 2) if actual_balls else 0.0
+
+    players = match.get("players", {})
+    user_cache = match.get("user_cache", {})
+
+    # ───────── HEADER ─────────
+    text = (
+        f"╾ ⏳ <b>Total Overs:</b> {match.get('overs', 0)}\n"
+        f"╾ 📯 <b>Host:</b> {host_name}\n"
+        "────┈┄┄╌╌╌╌┄┄┈────\n"
+        f"<b>🏏 Batting: Team {bat}</b>\n\n"
+    )
+
+    # ───────── BATTERS ─────────
+    s_id = match.get("striker")
+    ns_id = match.get("non_striker")
+
+    for uid in [s_id, ns_id]:
+        if not uid:
+            continue
+
+        p = players.get(uid, {})
+        name = user_cache.get(uid, "Player")
+
+        p_runs = p.get("runs", 0)
+        p_balls = p.get("balls_faced", 0)
+        sr = round((p_runs / p_balls) * 100, 1) if p_balls else 0.0
+
+        star = " 🏏" if uid == s_id else ""
+        form = ""
+
+        if p_balls >= 10:
+            if sr >= 150:
+                form = " 🔥"
+            elif sr <= 80:
+                form = " ⚠️"
+
+        text += f"✧ {name} = {p_runs}({p_balls}){star}{form}\n╰⊚ (SR: {sr})\n"
+
+    # ───────── PARTNERSHIP ─────────
+    if match.get("partnership") or match.get("partnership_balls"):
+        text += f"🤝 <b>Partnership:</b> {match.get('partnership',0)}({match.get('partnership_balls',0)})\n"
+
+    text += "────┈┄┄╌╌╌╌┄┄┈────\n"
+
+    # ───────── BOWLER & OVER ─────────
+    bowler_uid = match.get("current_bowler")
+    if bowler_uid:
+        b_name = user_cache.get(bowler_uid, "Bowler")
+        b = players.get(bowler_uid, {})
+
+        history = match.get("current_over_balls", [])
+        history_txt = " • ".join(map(str, history)) if history else "Starting over..."
+
+        b_balls = b.get("balls_bowled", 0)
+        b_runs = b.get("runs_conceded", 0)
+        econ = round((b_runs * 6 / b_balls), 2) if b_balls else 0.0
+
+        text += (
+            f"<b>⚾ Bowling: Team {bowl}</b>\n\n"
+            f"👤 {b_name}\n"
+            f"╰⊚ Over: [{history_txt}]\n"
+            f"╰⊚ Econ: <b>{econ}</b>\n"
+            "────┈┄┄╌╌╌╌┄┄┈────\n"
+        )
+
+    # ───────── SCORE LINE ─────────
+    text += (
+        f"👥 <b>Total Score:</b> {runs}/{wickets} ({overs_formatted} ov)\n"
+        f"╰⊚ <b>CRR:</b> {crr}\n"
+    )
+
+    # ───────── DOT BALL PRESSURE ─────────
+    dots = bat_team.get("over_history", []).count(0)
+    if actual_balls:
+        dot_pct = int((dots / actual_balls) * 100)
+        text += f"🧱 <b>Dot Balls:</b> {dots} ({dot_pct}%)\n"
+
+    # ───────── MOMENTUM ─────────
+    recent = bat_team.get("over_history", [])[-12:]
+    recent_runs = sum(x for x in recent if isinstance(x, int))
+    recent_wkts = recent.count("W")
+
+    if recent_wkts >= 2:
+        momentum = "🔴 Bowling on top"
+    elif recent_runs >= 18:
+        momentum = "🟢 Batting accelerating"
+    else:
+        momentum = "⚖️ Even contest"
+
+    text += f"📊 <b>Momentum:</b> {momentum}\n"
+
+    # ───────── CHASE LOGIC ─────────
+    if match.get("innings") == 2:
+        text += "⊱⋅ ──────────── ⋅⊰\n"
+
+        prev_runs = bowl_team.get("runs", 0)
+        prev_wkts = bowl_team.get("wickets", 0)
+        prev_balls = bowl_team.get("balls", match.get("overs", 1) * 6)
+        prev_overs = f"{prev_balls // 6}.{prev_balls % 6}"
+
+        target = match.get("target", 0)
+        balls_left = max(0, match.get("overs", 0) * 6 - actual_balls)
+        runs_needed = max(0, target - runs)
+        rrr = round((runs_needed * 6 / balls_left), 2) if balls_left else 0.0
+
+        text += (
+            f"🏁 <b>Team {bowl}:</b> {prev_runs}/{prev_wkts} ({prev_overs} ov)\n"
+            f"🎯 <b>Target:</b> {target}\n"
+            f"╰⊚ Need <b>{runs_needed}</b> runs in <b>{balls_left}</b> balls\n"
+            f"📈 <b>RRR:</b> {rrr}\n"
+        )
+
+        text += "<i>⚠️ Required rate rising</i>\n" if rrr > crr else "<i>✅ Chase under control</i>\n"
+
+    # ───────── FOOTER ─────────
+    footer = (
+        "ℹ️ Early wickets can flip the game."
+        if match.get("innings") == 1
+        else "🏁 Every ball matters now."
+    )
+
+    text += f"\n<i>{footer}</i>"
+
+    return text
+
+
+def build_final_summary_image(match_data):
+    """
+    Renders the final match summary with top performers using custom name fonts.
+    Layout: Team Scores at top, Boxes for Best Batsman/Bowler, and Winner at bottom.
+    """
+    # 1. Background Setup
+    if not os.path.exists(SCORE_BG):
+        img = Image.new("RGBA", (1280, 1000), color=(20, 24, 35, 255))
+    else:
+        img = Image.open(SCORE_BG).convert("RGBA").resize((1280, 1000))
+
+    draw = ImageDraw.Draw(img)
+
+    # 2. Font Loading Logic
+    # Paths for your specific name fonts
+    NAME_FONTS = ["Assets/namefont.ttf"]
+
+    try:
+        font_lg = ImageFont.truetype(FONT_PATH, 90)  # Main Titles
+        font_md = ImageFont.truetype(FONT_PATH, 45)  # Box Titles
+        font_sm = ImageFont.truetype(FONT_PATH, 32)  # Stats text
+
+        # Load the first available custom name font, fallback to FONT_PATH if missing
+        font_name = None
+        for path in NAME_FONTS:
+            if os.path.exists(path):
+                font_name = ImageFont.truetype(path, 40)
+                break
+        if not font_name:
+            font_name = ImageFont.truetype(FONT_PATH, 40)
+
+    except Exception as e:
+        print(f"Font Load Error: {e}")
+        font_lg = font_md = font_sm = font_name = ImageFont.load_default()
+
+    # 3. Enhanced Box Drawing Function
+    def draw_box(x, y, w, h, title, player_name, stats_list, color):
+        """Draws box with specialized font for the player name."""
+        # Draw semi-transparent background box
+        draw.rounded_rectangle([x, y, x+w, y+h], radius=20, fill=(30, 34, 45, 220), outline=color, width=4)
+
+        # Draw Box Title (e.g., Best Batsman)
+        draw.text((x + 25, y + 15), title.upper(), font=font_md, fill=color)
+
+        # Draw Player Name with the CUSTOM FONT
+        draw.text((x + 25, y + 75), player_name, font=font_name, fill="white")
+
+        # Draw Remaining Stats (Runs, Balls, etc.)
+        for i, stat in enumerate(stats_list):
+            draw.text((x + 25, y + 130 + (i * 45)), stat, font=font_sm, fill="#CCCCCC")
+
+    # 4. Positions
+    y_scores = 120
+    y_boxes_top = 280
+    y_boxes_bot = 580
+    y_winner = 880
+
+    # 5. Render Content
+    # Team Scores
+    draw.text((120, y_scores), f"TEAM A: {match_data['score_a']}", font=font_lg, fill="white")
+    draw.text((720, y_scores), f"TEAM B: {match_data['score_b']}", font=font_lg, fill="white")
+
+    # --- Team A Boxes ---
+    draw_box(100, y_boxes_top, 520, 270, "Best Batsman (A)", 
+             match_data['bat_a_name'], 
+             [f"Runs: {match_data['bat_a_r']} ({match_data['bat_a_b']}b)", f"4s: {match_data['bat_a_4']} | 6s: {match_data['bat_a_6']}"], "#FF3131")
+
+    draw_box(100, y_boxes_bot, 520, 270, "Best Bowler (A)", 
+             match_data['bowl_a_name'], 
+             [f"Wickets: {match_data['bowl_a_w']}", f"Runs Conceded: {match_data['bowl_a_r_c']}"], "#FF3131")
+
+    # --- Team B Boxes ---
+    draw_box(660, y_boxes_top, 520, 270, "Best Batsman (B)", 
+             match_data['bat_b_name'], 
+             [f"Runs: {match_data['bat_b_r']} ({match_data['bat_b_b']}b)", f"4s: {match_data['bat_b_4']} | 6s: {match_data['bat_b_6']}"], "#007FFF")
+
+    draw_box(660, y_boxes_bot, 520, 270, "Best Bowler (B)", 
+             match_data['bowl_b_name'], 
+             [f"Wickets: {match_data['bowl_b_w']}", f"Runs Conceded: {match_data['bowl_b_r_c']}"], "#007FFF")
+
+    # --- Final Result ---
+    winner_text = f"🏆 {match_data['winner_name'].upper()} WON THE MATCH!"
+    bbox = draw.textbbox((0, 0), winner_text, font=font_lg)
+    w_text = bbox[2] - bbox[0]
+    draw.text((640 - w_text/2, y_winner), winner_text, font=font_lg, fill="#FFD700", stroke_width=2, stroke_fill="black")
+
+    # 6. Export
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="JPEG", quality=95)
+    buf.seek(0)
+    return buf
+
+# ───────────────── DATABASE SYNC ─────────────────
+
+async def save_match_stats(match, winner_team):
+    """
+    SAVES FINAL RESULTS + CAREER STATS (MOM, Highest Score, Partnership, boundaries)
+    Uses an atomic transaction to ensure data integrity.
+    """
+    from database.connection import db
+
+    game_id = match.get("game_id")
+    players = match.get("players", {})
+
+    # 🛠 SAFETY: Prevent processing if match data is empty
+    if not game_id or "teams" not in match or not players:
+        print(f"⚠️ Stats skip: Match {game_id} has incomplete memory data.")
+        return
+
+    # 1. Determine Man of the Match (MOM) Logic
+    # Points: 1 per run, 25 per wicket, 10 for winning team bonus
+    motm_id = None
+    max_points = -1
+    for uid, p in players.items():
+        points = p.get("runs", 0) + (p.get("wickets", 0) * 25)
+        if p.get("team") == winner_team:
+            points += 10
+        if points > max_points:
+            max_points = points
+            motm_id = uid
+
+    async with db.pool.acquire() as conn:
+        async with conn.transaction():
+            # 2. Update Main Games Table
+            team_a = match["teams"].get("A", {"runs": 0, "wickets": 0})
+            team_b = match["teams"].get("B", {"runs": 0, "wickets": 0})
+
+            await conn.execute(
+                """
+                UPDATE games 
+                SET status='finished', winner=$1, team_a_runs=$2, team_b_runs=$3, 
+                    team_a_wickets=$4, team_b_wickets=$5
+                WHERE game_id=$6
+                """,
+                winner_team, team_a.get("runs", 0), team_b.get("runs", 0),
+                team_a.get("wickets", 0), team_b.get("wickets", 0), game_id
+            )
+
+            # 3. Loop through players and update Individual Career Stats
+            for uid, p in players.items():
+                is_winner = 1 if p.get("team") == winner_team else 0
+                is_loser = 1 if (winner_team not in ["Tie", "No Result", None] and p.get("team") != winner_team) else 0
+                is_mom = 1 if uid == motm_id else 0
+
+                # Stats Extraction
+                runs = p.get("runs", 0)
+                wickets = p.get("wickets", 0)
+                fours = p.get("fours_count", 0)
+                sixes = p.get("sixes_count", 0)
+                b_faced = p.get("balls_faced", 0)
+                b_bowled = p.get("balls_bowled", 0)
+                r_conceded = p.get("runs_conceded", 0)
+
+                # Milestones
+                is_50 = 1 if 50 <= runs < 100 else 0
+                is_100 = 1 if runs >= 100 else 0
+                is_duck = 1 if runs == 0 and p.get("is_out") else 0
+
+                # Update Core Stats
+                await conn.execute(
+                    """
+                    INSERT INTO user_stats (
+                        user_id, matches, wins, losses, runs, wickets, 
+                        balls_faced, balls_bowled, runs_conceded, fours, sixes,
+                        moms, centuries, fifties, ducks
+                    )
+                    VALUES ($1, 1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        matches = user_stats.matches + 1,
+                        wins = user_stats.wins + $2,
+                        losses = user_stats.losses + $3,
+                        runs = user_stats.runs + $4,
+                        wickets = user_stats.wickets + $5,
+                        balls_faced = user_stats.balls_faced + $6,
+                        balls_bowled = user_stats.balls_bowled + $7,
+                        runs_conceded = user_stats.runs_conceded + $8,
+                        fours = user_stats.fours + $9,
+                        sixes = user_stats.sixes + $10,
+                        moms = user_stats.moms + $11,
+                        centuries = user_stats.centuries + $12,
+                        fifties = user_stats.fifties + $13,
+                        ducks = user_stats.ducks + $14
+                    """,
+                    uid, is_winner, is_loser, runs, wickets, b_faced, b_bowled, 
+                    r_conceded, fours, sixes, is_mom, is_100, is_50, is_duck
+                )
+
+                # 4. Update Highest Score (GREATEST ensures we don't overwrite if match score is lower)
+                await conn.execute(
+                    "UPDATE user_stats SET highest_score = GREATEST(highest_score, $1) WHERE user_id = $2",
+                    runs, uid
+                )
+
+            # 5. Update Best Partnership (Tracked for all players involved in the final pair)
+            partnership_runs = match.get("partnership", 0)
+            striker = match.get("striker")
+            non_striker = match.get("non_striker")
+
+            for pid in [striker, non_striker]:
+                if pid:
+                    await conn.execute(
+                        "UPDATE user_stats SET best_partnership = GREATEST(best_partnership, $1) WHERE user_id = $2",
+                        partnership_runs, pid
+                    )
+
+    print(f"✅ Match {game_id} full stats and milestones saved.")

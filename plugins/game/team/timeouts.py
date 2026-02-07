@@ -1,0 +1,183 @@
+import asyncio
+from pyrogram.enums import ParseMode
+from database.games import update_team_penalty, increment_user_penalty_count
+
+# Set to 90 seconds (1.5 minutes)
+TIME_LIMIT = 90
+
+def mention_user(match, user_id, fallback="Player"):
+    name = match.get("user_cache", {}).get(user_id, fallback)
+    return f"<a href='tg://user?id={user_id}'>{name}</a>"
+
+
+async def start_timer(match, role):
+    client = match["client"]
+    chat_id = match["chat_id"]
+
+    if "timeouts" not in match:
+        match["timeouts"] = {
+            "bowler": {"fails": 0, "task": None},
+            "batter": {"fails": 0, "task": None},
+        }
+
+    user_id = match.get("current_bowler") if role == "bowler" else match.get("striker")
+    mention = mention_user(match, user_id, role.capitalize())
+
+    # 🟡 30s WARNING
+    await asyncio.sleep(30)
+
+    if role == "bowler" and match.get("bowled"): return
+    if role == "batter" and (match.get("batted") or not match.get("bowled")): return
+
+    await client.send_message(
+        chat_id,
+        f"⏳ <b>30 seconds gone…</b>\n"
+        f"{mention}, crowd’s watching 👀 Don’t ice the game 😄",
+        parse_mode=ParseMode.HTML
+    )
+
+    # 🔴 10s WARNING
+    await asyncio.sleep(20)
+
+    if role == "bowler" and match.get("bowled"): return
+    if role == "batter" and (match.get("batted") or not match.get("bowled")): return
+
+    await client.send_message(
+        chat_id,
+        f"⚠️ <b>10 seconds left!</b>\n"
+        f"{mention}, now or never — hesitation won’t make highlights 😉",
+        parse_mode=ParseMode.HTML
+    )
+
+    # ⛔ FINAL TIMEOUT
+    await asyncio.sleep(10)
+
+    if role == "bowler" and match.get("bowled"): return
+    if role == "batter" and (match.get("batted") or not match.get("bowled")): return
+
+    await handle_timeout(match, role)
+
+async def handle_timeout(match, role):
+    client = match["client"]
+    chat_id = match["chat_id"]
+
+    if "timeouts" not in match or match.get("phase") != "LIVE":
+        return
+
+    t_info = match["timeouts"][role]
+    team_key = match.get("bowling_team") if role == "bowler" else match.get("batting_team")
+    user_id = match.get("current_bowler") if role == "bowler" else match.get("striker")
+
+    if not team_key or not user_id:
+        return
+
+    mention = mention_user(match, user_id, role.capitalize())
+
+    # ───────────────── STRIKE 1 ─────────────────
+    if t_info.get("fails", 0) == 0:
+        t_info["fails"] = 1
+        match["prompt_dispatched"] = False
+
+        await client.send_message(
+            chat_id,
+            (
+                "🚩 <b>TIME WARNING</b>\n\n"
+                f"{mention} is taking too long.\n"
+                "The clock is ticking and the crowd is restless ⏳\n\n"
+                "⚠️ <b>Next delay:</b> -6 runs & automatic removal."
+            ),
+            parse_mode=ParseMode.HTML
+        )
+
+        t_info["task"] = asyncio.create_task(start_timer(match, role))
+        return
+
+    # ───────────────── STRIKE 2 ─────────────────
+    t_info["fails"] = 0
+
+    # Apply team penalty
+    if team_key in match.get("teams", {}):
+        match["teams"][team_key]["runs"] -= 6
+
+    try:
+        await update_team_penalty(match["game_id"], team_key, 6)
+        await increment_user_penalty_count(user_id)
+    except Exception as e:
+        print(f"Penalty DB Error: {e}")
+
+    penalty_msg = (
+        "🚫 <b>TIMEOUT – STRIKE 2</b>\n\n"
+        f"{mention} fails to respond in time ⏰\n"
+        f"🧮 <b>Team {team_key}</b> penalized <b>-6 runs</b>.\n\n"
+    )
+
+    # ───────────────── BATTER TIMEOUT ─────────────────
+    if role == "batter":
+        bat_team = match["teams"][team_key]
+
+        # Mark batter out
+        bat_team["wickets"] += 1
+        if user_id in match["players"]:
+            match["players"][user_id]["is_out"] = True
+
+        penalty_msg += "☝️ <b>Batter is OUT</b> — beaten by the clock.\n\n"
+
+        # ✅ CORRECT ALL-OUT CHECK (NO FIXED PLAYER COUNT)
+        bat_players = bat_team.get("players", [])
+        alive_batters = [
+            uid for uid in bat_players
+            if not match["players"].get(uid, {}).get("is_out", False)
+        ]
+
+        if len(alive_batters) == 0:
+            await client.send_message(
+                chat_id,
+                penalty_msg + "🏁 <b>ALL OUT!</b>\nThe innings comes to an end.",
+                parse_mode=ParseMode.HTML
+            )
+
+            if match.get("innings") == 1:
+                from plugins.game.team.over_engine import end_innings
+                await end_innings(match)
+            else:
+                from plugins.game.team.over_engine import end_match
+                await end_match(match)
+
+            return
+
+        # Batter remains → ask for next batter
+        penalty_msg += (
+            "🧢 <b>Batting Captain</b>, send the next batter:\n"
+            "<code>/batting &lt;number&gt;</code>"
+        )
+        match["striker"] = None
+
+    # ───────────────── BOWLER TIMEOUT ─────────────────
+    else:
+        match["last_over_bowler"] = user_id
+        match["current_bowler"] = None
+
+        penalty_msg += (
+            "🎳 <b>Bowler removed from the attack.</b>\n\n"
+            "🧢 <b>Bowling Captain</b>, choose a new bowler:\n"
+            "<code>/bowling &lt;number&gt;</code>"
+        )
+
+    # ───────────────── STATE RESET ─────────────────
+    match.update({
+        "prompt_dispatched": False,
+        "bowled": False,
+        "batted": False,
+        "last_bowl": None
+    })
+
+    await client.send_message(chat_id, penalty_msg, parse_mode=ParseMode.HTML)
+
+    # ───────────────── CANCEL ANY RUNNING TIMERS ─────────────────
+    for r in ("bowler", "batter"):
+        task = match["timeouts"][r].get("task")
+        if task:
+            try:
+                task.cancel()
+            except Exception:
+                pass
