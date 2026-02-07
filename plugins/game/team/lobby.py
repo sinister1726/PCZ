@@ -448,43 +448,43 @@ async def members(client, message):
     user = message.from_user
     match = ACTIVE_MATCHES.get(chat_id)
 
-    # 1. Fetch Game from DB as fallback
+    # 1️⃣ Fetch Game from DB as fallback
     game = await get_active_game(chat_id)
     if not match and not game:
         return await message.reply_text("❌ **No active game available.**")
 
-    # 2. Cooldown Logic
+    # 2️⃣ Cooldown Logic (Host bypass)
     host_id = match.get("host_id") if match else game.get("host_id")
     if user.id != host_id:
         now = time.time()
         if chat_id in GROUP_COOLDOWN and (now - GROUP_COOLDOWN[chat_id]) < 10:
             remaining = 10 - (now - GROUP_COOLDOWN[chat_id])
-            return await message.reply_text(f"⏳ **Slow down!** {remaining:.1f}s remaining.")
+            return await message.reply_text(
+                f"⏳ **Slow down!** Try again in `{remaining:.1f}s`."
+            )
         GROUP_COOLDOWN[chat_id] = now
 
-    # 3. Dynamic Phase Logic 
+    # 3️⃣ Phase Detection
     current_phase = match.get("phase") if match else game.get("phase")
     if match and (match.get("striker") or match.get("current_bowler")):
         current_phase = "LIVE"
 
     def get_status_text():
-        if current_phase == "READY": return "⚖️ Doing Setup / Toss"
-        if current_phase in ["TEAM_A_JOIN", "TEAM_B_JOIN", "JOINING"]: return "📝 Joining Phase"
+        if current_phase == "READY": return "⚖️ Setup / Toss"
+        if current_phase in ("TEAM_A_JOIN", "TEAM_B_JOIN", "JOINING"): return "📝 Joining Phase"
         if current_phase == "LIVE": return "🏏 Match in Progress"
         return "🔄 Initializing"
 
     def team_activity(team_code):
         if current_phase == "LIVE" and match:
             return "𝗕𝗮𝘁𝘁𝗶𝗻𝗴" if match.get("batting_team") == team_code else "𝗕𝗼𝘄𝗹𝗶𝗻𝗴"
-        if current_phase == "READY": return "𝗦𝗲𝘁𝘁𝗶𝗻𝗴 𝗨𝗽"
+        if current_phase == "READY":
+            return "𝗦𝗲𝘁𝘁𝗶𝗻𝗴 𝗨𝗽"
         return "𝗝𝗼𝗶𝗻𝗶𝗻𝗴..."
 
-    # 4. Helper: Format Player List
+    # 4️⃣ Team List Formatter
     def format_team_list(team_code):
-        players = []
-        if match:
-            players = match.get("teams", {}).get(team_code, {}).get("players", [])
-
+        players = match.get("teams", {}).get(team_code, {}).get("players", []) if match else []
         if not players:
             return "    ╰⊚ _No players joined_"
 
@@ -492,33 +492,31 @@ async def members(client, message):
         for i, uid in enumerate(players, start=1):
             name = match.get("user_cache", {}).get(uid, "Player")
             tag = ""
-            if match:
-                if uid == match.get("striker"): tag = " 🏏"
-                elif uid == match.get("non_striker"): tag = " 🏃"
-                elif uid == match.get("current_bowler"): tag = " ⚾"
+            if uid == match.get("striker"): tag = " 🏏"
+            elif uid == match.get("non_striker"): tag = " 🏃"
+            elif uid == match.get("current_bowler"): tag = " ⚾"
 
-            p_data = match.get("players", {}).get(uid, {})
-            is_cap = " 👑" if p_data.get("is_captain") else ""
-            out = " ◼️" if p_data.get("is_out") else ""
+            pdata = match.get("players", {}).get(uid, {})
+            cap = " 👑" if pdata.get("is_captain") else ""
+            out = " ❌" if pdata.get("is_out") else ""
 
-            lines.append(f"    {i}. {name}{is_cap}{tag}{out}")
+            lines.append(f"    {i}. {name}{cap}{tag}{out}")
         return "\n".join(lines)
 
-    # 5. Data Safety
+    # 5️⃣ Scores
     overs_val = match.get("overs") if match else game.get("overs", "N/A")
     host_name = match.get("host_name") if match else "Host"
-    score_a = "0/0 (0.0 ov)"
-    score_b = "0/0 (0.0 ov)"
 
+    score_a = score_b = "0/0 (0.0 ov)"
     if match:
-        for t_key in ["A", "B"]:
-            t = match.get("teams", {}).get(t_key, {})
+        for k in ("A", "B"):
+            t = match["teams"].get(k, {})
             r, w, b = t.get("runs", 0), t.get("wickets", 0), t.get("balls", 0)
-            ov_str = f"{b//6}.{b%6}"
-            if t_key == "A": score_a = f"{r}/{w} ({ov_str} ov)"
-            else: score_b = f"{r}/{w} ({ov_str} ov)"
+            ov = f"{b//6}.{b%6}"
+            if k == "A": score_a = f"{r}/{w} ({ov} ov)"
+            else: score_b = f"{r}/{w} ({ov} ov)"
 
-    # 6. Final Designer UI
+    # 6️⃣ UI Text
     text = (
         "📊 **𝗠𝗔𝗧𝗖𝗛 𝗢𝗩𝗘𝗥𝗩𝗜𝗘𝗪**\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"
@@ -535,29 +533,33 @@ async def members(client, message):
         "✨ #CricketArena | @NexoraSystems"
     )
 
-    # 7. Thumbnail Execution (Controlled & One-Time)
+    # 7️⃣ Thumbnail Logic (HOST UNLIMITED)
     send_thumb = False
     cap_a = cap_b = None
 
     if match:
         for uid, pdata in match.get("players", {}).items():
             if pdata.get("is_captain"):
-                if pdata.get("team") == "A":
-                    cap_a = uid
-                elif pdata.get("team") == "B":
-                    cap_b = uid
+                if pdata.get("team") == "A": cap_a = uid
+                elif pdata.get("team") == "B": cap_b = uid
 
-    # ─── SEND THUMB ONLY ONCE (OVERS SET MOMENT) ───
-    if (
-        match
-        and cap_a
-        and cap_b
-        and not match.get("members_thumb_sent")
-        and match.get("overs")  # overs selected
-    ):
-        send_thumb = True
-        match["members_thumb_sent"] = True  # lock it
+    overs_set = bool(match and match.get("overs"))
+    is_host = (user.id == host_id)
 
+    if match and cap_a and cap_b and overs_set:
+        if is_host:
+            send_thumb = True
+        else:
+            if not match.get("members_thumb_sent"):
+                send_thumb = True
+                match["members_thumb_sent"] = True
+
+    # 🔄 Refresh Button (ANYONE CAN USE)
+    refresh_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_members")]
+    ])
+
+    # 8️⃣ Send Output
     try:
         if send_thumb:
             path_a = await get_fast_avatar(client, cap_a)
@@ -574,29 +576,111 @@ async def members(client, message):
 
                 sent = await message.reply_photo(
                     photo=thumb,
-                    caption=text
+                    caption=text,
+                    reply_markup=refresh_markup
                 )
-
-                # ─── TRY PINNING (NO CRASH IF NO RIGHTS) ───
                 try:
                     await sent.pin(disable_notification=True)
                 except ChatAdminRequired:
                     pass
-
             else:
                 await message.reply_text(text)
-
         else:
-            # ─── NO THUMB → SEND TEXT + MEMBERS IMAGE ───
             await message.reply_photo(
                 photo=MEMBERS_IMAGE,
-                caption=text
+                caption=text,
+                reply_markup=refresh_markup
             )
 
     except Exception as e:
         print(f"[MEMBERS ERROR]: {e}")
         await message.reply_text(text)
 
+
+@Client.on_callback_query(filters.regex("^refresh_members$"))
+async def refresh_members_callback(client, cq):
+    message = cq.message
+    chat_id = message.chat.id
+
+    match = ACTIVE_MATCHES.get(chat_id)
+    game = await get_active_game(chat_id)
+
+    if not match and not game:
+        return await cq.answer("No active match.", show_alert=True)
+
+    current_phase = match.get("phase") if match else game.get("phase")
+    if match and (match.get("striker") or match.get("current_bowler")):
+        current_phase = "LIVE"
+
+    def get_status_text():
+        if current_phase == "READY": return "⚖️ Setup / Toss"
+        if current_phase in ("TEAM_A_JOIN", "TEAM_B_JOIN", "JOINING"): return "📝 Joining Phase"
+        if current_phase == "LIVE": return "🏏 Match in Progress"
+        return "🔄 Initializing"
+
+    def team_activity(team_code):
+        if current_phase == "LIVE" and match:
+            return "𝗕𝗮𝘁𝘁𝗶𝗻𝗴" if match.get("batting_team") == team_code else "𝗕𝗼𝘄𝗹𝗶𝗻𝗴"
+        if current_phase == "READY":
+            return "𝗦𝗲𝘁𝘁𝗶𝗻𝗴 𝗨𝗽"
+        return "𝗝𝗼𝗶𝗻𝗶𝗻𝗴..."
+
+    def format_team_list(team_code):
+        players = match.get("teams", {}).get(team_code, {}).get("players", []) if match else []
+        if not players:
+            return "    ╰⊚ _No players joined_"
+
+        lines = []
+        for i, uid in enumerate(players, start=1):
+            name = match.get("user_cache", {}).get(uid, "Player")
+            tag = ""
+            if uid == match.get("striker"): tag = " 🏏"
+            elif uid == match.get("non_striker"): tag = " 🏃"
+            elif uid == match.get("current_bowler"): tag = " ⚾"
+
+            pdata = match.get("players", {}).get(uid, {})
+            cap = " 👑" if pdata.get("is_captain") else ""
+            out = " ❌" if pdata.get("is_out") else ""
+
+            lines.append(f"    {i}. {name}{cap}{tag}{out}")
+        return "\n".join(lines)
+
+    score_a = score_b = "0/0 (0.0 ov)"
+    if match:
+        for k in ("A", "B"):
+            t = match["teams"].get(k, {})
+            r, w, b = t.get("runs", 0), t.get("wickets", 0), t.get("balls", 0)
+            ov = f"{b//6}.{b%6}"
+            if k == "A": score_a = f"{r}/{w} ({ov} ov)"
+            else: score_b = f"{r}/{w} ({ov} ov)"
+
+    overs_val = match.get("overs") if match else game.get("overs", "N/A")
+    host_name = match.get("host_name") if match else "Host"
+
+    text = (
+        "📊 **𝗠𝗔𝗧𝗖𝗛 𝗢𝗩𝗘𝗥𝗩𝗜𝗘𝗪**\n"
+        "────┈┄┄╌╌╌╌┄┄┈────\n"
+        f"👑 **𝗛𝗼𝘀𝘁:** {host_name}\n"
+        f"⏳ **𝗢𝘃𝗲𝗿𝘀:** {overs_val} | 📍 **{get_status_text()}**\n"
+        "────┈┄┄╌╌╌╌┄┄┈────\n"
+        f"🌊 **𝗧𝗘𝗔𝗠 𝗔** - `{score_a}`\n"
+        f"╰⊚ {team_activity('A')}\n"
+        f"{format_team_list('A')}\n\n"
+        f"🔥 **𝗧𝗘𝗔𝗠 𝗕** - `{score_b}`\n"
+        f"╰⊚ {team_activity('B')}\n"
+        f"{format_team_list('B')}\n"
+        "────┈┄┄╌╌╌╌┄┄┈────\n"
+        "✨ #CricketArena | @NexoraSystems"
+    )
+
+    await message.edit_caption(
+        caption=text,
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Refresh", callback_data="refresh_members")]
+        ])
+    )
+
+    await cq.answer("Updated ✔️")
 
 import random
 from pyrogram import Client, filters
