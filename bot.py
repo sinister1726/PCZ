@@ -1,8 +1,15 @@
 import asyncio
 from pyrogram import Client, idle
 from config import Config
-from database import initialize_database # The function we fixed in the previous step
 from database.connection import db
+import asyncio
+from database.migrate import migrate
+
+async def initialize_database():
+    """Call this inside your main bot startup function."""
+    await db.connect()
+    await migrate()
+    print("✅ Database connected & tables ready")
 
 async def start_nexora():
     # 1. Initialize Database inside the running loop
