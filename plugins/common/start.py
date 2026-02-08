@@ -9,7 +9,6 @@ from database.users import add_user, total_users
 PLAYZONE_LINK = "https://t.me/+joF1bCfiMT9jMzVh"
 SUPPORT_LINK = "https://t.me/Nexxxxxo_bots"
 
-
 START_MOODS = [
     "🏏 𝗪𝗲𝗹𝗰𝗼𝗺𝗲, 𝗖𝗮𝗽𝘁𝗮𝗶𝗻!",
     "✨ 𝗥𝗲𝗮𝗱𝘆 𝘁𝗼 𝗯𝘂𝗶𝗹𝗱 𝘆𝗼𝘂𝗿 𝗰𝗿𝗶𝗰𝗸𝗲𝘁 𝗹𝗲𝗴𝗮𝗰𝘆?",
@@ -19,14 +18,17 @@ START_MOODS = [
 @Client.on_message(filters.command("start") & filters.private)
 async def start_cmd(client: Client, message):
     user = message.from_user
-    is_new = await add_user(user.id, user.first_name)
+    first_name = user.first_name or "Captain"
+
+    # ✅ Register user safely (NO /start dependency elsewhere)
+    is_new = await add_user(user.id, first_name)
 
     mood = random.choice(START_MOODS)
 
     caption = (
         f"{mood}\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n\n"
-        f"👤 <b>{user.first_name}</b>, welcome to <b>Cricket Legacy</b> ✨\n\n"
+        f"👤 <b>{first_name}</b>, welcome to <b>Cricket Legacy</b> ✨\n\n"
         "🏏 <b>Cricket Legacy v2</b>\n"
         "🚧 <i>Beta Launch</i>\n\n"
         "🎮 Play epic team matches\n"
@@ -52,7 +54,7 @@ async def start_cmd(client: Client, message):
         ]
     )
 
-    # 🖼️ Try photo first, fallback to text
+    # 🖼️ Photo → fallback to text (safe)
     try:
         await message.reply_photo(
             photo=Config.START_IMAGE,
@@ -67,13 +69,13 @@ async def start_cmd(client: Client, message):
             reply_markup=buttons
         )
 
-    # 📥 Log new user
+    # 📥 Log new users only
     if is_new:
         try:
             count = await total_users()
             log_text = (
                 "✨ <b>NEW PLAYER JOINED</b>\n\n"
-                f"👤 {user.first_name}\n"
+                f"👤 {first_name}\n"
                 f"🆔 <code>{user.id}</code>\n"
                 f"📊 Total Users: {count}"
             )
