@@ -1,11 +1,12 @@
-FROM python:3.10-slim-bookworm 
-
-RUN apt update && apt upgrade -y
+FROM python:3.10-slim-bookworm
 
 WORKDIR /usr/src/app
 
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
+
 COPY . .
 
-RUN pip3 install --upgrade pip && pip3 install -r requirements.txt
-
-CMD gunicorn app:app & python3 bot.py
+CMD sh -c "gunicorn app:app & python3 bot.py"
