@@ -3,7 +3,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ParseMode
 from Assets.files import START_IMAGE_GROUP, SOLO_MODE_IMAGE
 from database.games import is_game_active
-
+from pyrogram.types import Message
 # ───────────── MAINTENANCE SYSTEM ─────────────
 
 OWNER_ID = 8294062042
