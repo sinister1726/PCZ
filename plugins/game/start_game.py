@@ -6,7 +6,6 @@ from database.games import is_game_active
 from pyrogram.types import Message
 
 @Client.on_message(filters.command("start") & filters.group)
-@maintenance
 async def start_game(client, message):
     chat_id = message.chat.id
 
