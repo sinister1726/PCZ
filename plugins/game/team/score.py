@@ -1,7 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.enums import ParseMode
-from plugins.game.team.init import ACTIVE_MATCHES
+from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.scorecard import build_score_image, build_score_caption
 import time
 
