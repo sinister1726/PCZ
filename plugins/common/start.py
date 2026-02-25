@@ -99,7 +99,3 @@ async def auto_register_user(client: Client, message):
     except Exception:
         pass
         
-
-            await cb.answer("Something glitched 😅", show_alert=True)
-        except Exception:
-            pass
