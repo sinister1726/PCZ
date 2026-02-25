@@ -11,7 +11,7 @@ from pyrogram.errors import ChatAdminRequired
 
 from PIL import Image, ImageDraw, ImageFont
 
-from plugins.game.team.init import ACTIVE_MATCHES
+from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.state import GROUP_COOLDOWN
 
 from database.connection import db
