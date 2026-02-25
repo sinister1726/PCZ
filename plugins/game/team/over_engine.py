@@ -1,6 +1,6 @@
 import asyncio
 from pyrogram.enums import ParseMode
-from plugins.game.team.init import ACTIVE_MATCHES
+from plugins.game.team import ACTIVE_MATCHES
 import random
 from database.connection import db 
 from plugins.game.team.summaries import (
