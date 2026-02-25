@@ -6,7 +6,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ParseMode
 
 from Assets.files import RUN_VIDEOS
-from plugins.game.team.init import ACTIVE_MATCHES
+from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.over_engine import advance_ball
 from plugins.game.team.timeouts import start_timer
 
