@@ -2,7 +2,6 @@ import asyncio
 from pyrogram.enums import ParseMode
 from database.games import update_team_penalty, increment_user_penalty_count
 
-# Set to 90 seconds (1.5 minutes)
 TIME_LIMIT = 90
 
 def mention_user(match, user_id, fallback="Player"):
@@ -23,7 +22,6 @@ async def start_timer(match, role):
     user_id = match.get("current_bowler") if role == "bowler" else match.get("striker")
     mention = mention_user(match, user_id, role.capitalize())
 
-    # 🟡 30s WARNING
     await asyncio.sleep(30)
 
     if role == "bowler" and match.get("bowled"): return
@@ -36,7 +34,6 @@ async def start_timer(match, role):
         parse_mode=ParseMode.HTML
     )
 
-    # 🔴 10s WARNING
     await asyncio.sleep(20)
 
     if role == "bowler" and match.get("bowled"): return
@@ -49,7 +46,6 @@ async def start_timer(match, role):
         parse_mode=ParseMode.HTML
     )
 
-    # ⛔ FINAL TIMEOUT
     await asyncio.sleep(10)
 
     if role == "bowler" and match.get("bowled"): return
@@ -73,7 +69,6 @@ async def handle_timeout(match, role):
 
     mention = mention_user(match, user_id, role.capitalize())
 
-    # ───────────────── STRIKE 1 ─────────────────
     if t_info.get("fails", 0) == 0:
         t_info["fails"] = 1
         match["prompt_dispatched"] = False
@@ -92,10 +87,8 @@ async def handle_timeout(match, role):
         t_info["task"] = asyncio.create_task(start_timer(match, role))
         return
 
-    # ───────────────── STRIKE 2 ─────────────────
     t_info["fails"] = 0
 
-    # Apply team penalty
     if team_key in match.get("teams", {}):
         match["teams"][team_key]["runs"] -= 6
 
@@ -111,18 +104,15 @@ async def handle_timeout(match, role):
         f"🧮 <b>Team {team_key}</b> penalized <b>-6 runs</b>.\n\n"
     )
 
-    # ───────────────── BATTER TIMEOUT ─────────────────
     if role == "batter":
         bat_team = match["teams"][team_key]
 
-        # Mark batter out
         bat_team["wickets"] += 1
         if user_id in match["players"]:
             match["players"][user_id]["is_out"] = True
 
         penalty_msg += "☝️ <b>Batter is OUT</b> — beaten by the clock.\n\n"
 
-        # ✅ CORRECT ALL-OUT CHECK (NO FIXED PLAYER COUNT)
         bat_players = bat_team.get("players", [])
         alive_batters = [
             uid for uid in bat_players
@@ -145,14 +135,12 @@ async def handle_timeout(match, role):
 
             return
 
-        # Batter remains → ask for next batter
         penalty_msg += (
             "🧢 <b>Batting Captain</b>, send the next batter:\n"
             "<code>/batting &lt;number&gt;</code>"
         )
         match["striker"] = None
 
-    # ───────────────── BOWLER TIMEOUT ─────────────────
     else:
         match["last_over_bowler"] = user_id
         match["current_bowler"] = None
@@ -162,8 +150,7 @@ async def handle_timeout(match, role):
             "🧢 <b>Bowling Captain</b>, choose a new bowler:\n"
             "<code>/bowling &lt;number&gt;</code>"
         )
-
-    # ───────────────── STATE RESET ─────────────────
+        
     match.update({
         "prompt_dispatched": False,
         "bowled": False,
@@ -173,7 +160,6 @@ async def handle_timeout(match, role):
 
     await client.send_message(chat_id, penalty_msg, parse_mode=ParseMode.HTML)
 
-    # ───────────────── CANCEL ANY RUNNING TIMERS ─────────────────
     for r in ("bowler", "batter"):
         task = match["timeouts"][r].get("task")
         if task:
