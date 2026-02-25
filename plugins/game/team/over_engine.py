@@ -1249,7 +1249,7 @@ async def end_match(match, forced: bool = False):
     except Exception as e:
         print("Stats Save Error:", e)
 
-    from plugins.game.team.init import ACTIVE_MATCHES
+    from plugins.game.team import ACTIVE_MATCHES
     ACTIVE_MATCHES.pop(chat_id, None)
 
     try:
