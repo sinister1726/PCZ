@@ -246,63 +246,77 @@ async def send_toss(client, chat_id, game_id):
     # Helper to display user mention safely
 
 
+import random
+
 @Client.on_callback_query(filters.regex("^toss_"))
 async def toss_handler(client, query):
     chat_id = query.message.chat.id
     caller = query.from_user
-    choice = query.data.split("_")[1]
+    choice = query.data.split("_")[1].lower()
+
+    if choice not in ["head", "tail"]:
+        return await query.answer("Invalid choice.", show_alert=True)
 
     game = await get_active_game(chat_id)
     match = ACTIVE_MATCHES.get(chat_id)
+
     if not game:
         return await query.answer("No active game.", show_alert=True)
 
     game_id = game["game_id"]
 
     async with db.pool.acquire() as conn:
-        # 1. Verify Captain Status
-        caller_cap = await conn.fetchrow(
-            "SELECT team FROM game_players WHERE game_id=$1 AND user_id=$2 AND is_captain=true",
-            game_id, caller.id
-        )
-        if not caller_cap:
-            return await query.answer("Only captains can participate in the toss.", show_alert=True)
+        async with conn.transaction():
 
-        # 2. Check if toss is already done
-        already = await conn.fetchval("SELECT toss_winner FROM games WHERE game_id=$1", game_id)
-        if already:
-            return await query.answer("Toss already completed.", show_alert=True)
+            caller_cap = await conn.fetchrow(
+                """SELECT team FROM game_players 
+                   WHERE game_id=$1 AND user_id=$2 AND is_captain=true""",
+                game_id, caller.id
+            )
+            if not caller_cap:
+                return await query.answer(
+                    "Only captains can participate in the toss.",
+                    show_alert=True
+                )
 
-        # 3. Get Opponent Info
-        opponent = await conn.fetchrow(
-            "SELECT user_id, team FROM game_players WHERE game_id=$1 AND is_captain=true AND user_id != $2",
-            game_id, caller.id
-        )
+            game_row = await conn.fetchrow(
+                "SELECT toss_winner FROM games WHERE game_id=$1 FOR UPDATE",
+                game_id
+            )
 
-    # 4. Flip Coin
-    result = random.choice(["head", "tail"])
-    caller_won = (choice == result)
+            if game_row["toss_winner"]:
+                return await query.answer("Toss already completed.", show_alert=True)
 
-    winner_id = caller.id if caller_won else opponent["user_id"]
+            opponent = await conn.fetchrow(
+                """SELECT user_id FROM game_players 
+                   WHERE game_id=$1 AND is_captain=true AND user_id != $2""",
+                game_id, caller.id
+            )
 
-    # 5. Save Result to Database
-    async with db.pool.acquire() as conn:
-        await conn.execute("UPDATE games SET toss_winner=$1 WHERE game_id=$2", winner_id, game_id)
+            if not opponent:
+                return await query.answer("Opponent not found.", show_alert=True)
 
-    # 🚀 6. SYNC TO LIVE MEMORY (Critical for game flow)
+            result = random.choice(["head", "tail"])
+            caller_won = (choice == result)
+
+            winner_id = caller.id if caller_won else opponent["user_id"]
+
+            await conn.execute(
+                "UPDATE games SET toss_winner=$1 WHERE game_id=$2",
+                winner_id, game_id
+            )
+
     if match:
         match["toss_winner"] = winner_id
 
     winner_mention = await display_user(client, winner_id)
 
-    # 7. Edit UI with Result
     await query.message.edit_text(
         f"🪙 <b>TOSS RESULT:</b> <code>{result.upper()}</code>\n"
         f"🏆 <b>Winner:</b> {winner_mention}",
         parse_mode=ParseMode.HTML
     )
 
-    # 8. Decision Prompt
     buttons = InlineKeyboardMarkup(
         [[
             InlineKeyboardButton("🏏 Bat First", callback_data="decide_bat"),
