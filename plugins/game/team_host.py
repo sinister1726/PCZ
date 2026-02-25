@@ -40,13 +40,6 @@ async def team_mode_selected(client, query):
     )
 
 
-from pyrogram import Client, filters
-from pyrogram.enums import ParseMode
-
-from database.games import get_active_game, create_game, user_in_other_game
-from utils.mentions import mention_html
-
-
 @Client.on_callback_query(filters.regex("^host_select$"))
 async def confirm_host(client, query):
     user = query.from_user
