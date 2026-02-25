@@ -248,7 +248,6 @@ async def host_claim_timeout(message, chat_id):
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ParseMode
-from plugins.game.team.init import ACTIVE_MATCHES
 import asyncio
 
 
