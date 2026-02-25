@@ -27,7 +27,7 @@ async def start_nexora():
     except Exception as e:
         print(f"❌ Database Initialization Failed: {e}")
 
-    from plugins.game.team.init import ACTIVE_MATCHES
+    from plugins.game.team import ACTIVE_MATCHES
     for m in ACTIVE_MATCHES.values():
         if not m.get("client"):
             m["client"] = bot
