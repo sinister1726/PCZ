@@ -9,9 +9,8 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, 
 from pyrogram.enums import ParseMode
 from database.connection import db
 from Assets.files import LEADERBOARD_IMG, PROFILE_IMG
-# In-memory dictionary for cooldowns
+
 COOLDOWN = {}
-# ───────────── RANK SYSTEM ─────────────
 
 ROMAN = ["I", "II", "III"]
 
@@ -37,7 +36,6 @@ NEW_RANKS = [
     ("🛐 Cricket God", 293000),
 ]
 def calculate_rank(stats):
-    # Core stats
     runs = stats.get("runs", 0)
     wickets = stats.get("wickets", 0)
     matches = stats.get("matches", 0)
@@ -50,15 +48,12 @@ def calculate_rank(stats):
     centuries = stats.get("centuries", 0)
     hat_tricks = stats.get("hat_tricks", 0)
 
-    # Batting metrics
     outs = max(1, matches - stats.get("not_outs", 0))
     avg = runs / outs
     sr = (runs / balls_faced * 100) if balls_faced > 0 else 0
 
-    # Bowling metrics
     econ = (runs_conceded / (balls_bowled / 6)) if balls_bowled > 0 else 10
 
-    # Scores
     batting_score = (
         avg * 20 +
         sr * 0.6 +
@@ -125,7 +120,6 @@ def calculate_rank(stats):
 
     return int(performance_score), f"{rank_name} {level}"
 
-# 🌟 Mister Title
 def calculate_title(stats):
     runs = stats.get("runs", 0)
     wickets = stats.get("wickets", 0)
@@ -145,7 +139,6 @@ def calculate_title(stats):
     sr = (runs / balls_faced * 100) if balls_faced > 0 else 0
     econ = (runs_conceded / (balls_bowled / 6)) if balls_bowled > 0 else 99
 
-    # 🔝 Highest prestige titles FIRST (priority order)
     if runs >= 1000 and wickets >= 100:
         return "🐐 Complete Cricketer"
 
@@ -211,19 +204,15 @@ def calculate_title(stats):
 
     return "—"
 
-
 @Client.on_message(filters.command(["userinfo", "profile", "userstats"]))
 async def userinfo(client, message):
     current_time = time.time()
 
-    # ───────── TARGET USER RESOLUTION ─────────
     target_user = None
 
-    # 1️⃣ Reply based
     if message.reply_to_message and message.reply_to_message.from_user:
         target_user = message.reply_to_message.from_user
 
-    # 2️⃣ Username / ID argument
     elif len(message.command) > 1:
         arg = message.command[1]
 
@@ -238,13 +227,11 @@ async def userinfo(client, message):
                 parse_mode=ParseMode.HTML
             )
 
-    # 3️⃣ Default: self
     else:
         target_user = message.from_user
 
     uid = target_user.id
 
-    # 🕒 Cooldown (only for self to avoid abuse)
     if uid == message.from_user.id:
         if uid in COOLDOWN and (current_time - COOLDOWN[uid]) < 5:
             remaining = 5 - (current_time - COOLDOWN[uid])
@@ -253,7 +240,6 @@ async def userinfo(client, message):
             )
         COOLDOWN[uid] = current_time
 
-    # ───────── DATABASE FETCH ─────────
     from utils.dbpass import safe_fetchrow
 
     try:
@@ -266,14 +252,12 @@ async def userinfo(client, message):
             "⚠️ Database busy. Please try again in a moment."
         )
 
-
     if not stats:
         return await message.reply_text(
             "❌ <b>No stats found</b>\nPlay some matches first!",
             parse_mode=ParseMode.HTML
         )
 
-    # ───────── BASIC STATS ─────────
     runs = stats.get("runs", 0)
     balls_faced = stats.get("balls_faced", 0)
     matches = stats.get("matches", 0)
@@ -287,7 +271,6 @@ async def userinfo(client, message):
 
     moms = stats.get("moms", 0)
 
-    # ───────── CALCULATIONS ─────────
     out_count = matches - stats.get("not_outs", 0)
     bat_avg = runs / out_count if out_count > 0 else float(runs)
     sr = (runs / balls_faced * 100) if balls_faced > 0 else 0.0
@@ -299,10 +282,8 @@ async def userinfo(client, message):
     win_rate = (won / matches * 100) if matches > 0 else 0.0
     mister = calculate_title(stats)
 
-    # ───────── RANK SYSTEM ─────────
     performance_score, tier = calculate_rank(stats)
 
-    # ───────── UI TEXT ─────────
     text = (
         f"🏏 <b>𝗖𝗔𝗥𝗘𝗘𝗥 𝗣𝗥𝗢𝗙𝗜𝗟𝗘</b>\n"
         f"👤 <b>Player:</b> ⏤͟͞{target_user.first_name}\n"
@@ -343,7 +324,6 @@ async def userinfo(client, message):
         parse_mode=ParseMode.HTML
     )
 
-# Standardized categories
 CATEGORIES = {
     "runs": ("🏏 Most Runs", "runs"),
     "wickets": ("🎯 Most Wickets", "wickets"),
@@ -372,7 +352,6 @@ async def get_home_text(user):
             "Database warming up. Try again shortly."
         )
 
-    # ✅ FIX: stats can be None (new user)
     if not stats:
         return (
             f"📊 <b>Welcome, {user.first_name}!</b>\n\n"
@@ -395,7 +374,6 @@ async def get_home_text(user):
         "────┈┄┄╌╌╌╌┄┄┈────\n"
         "Select a category below to view Global Rankings:"
     )
-
 
 async def build_rank_text(client, uid, category_key, offset=0):
     if category_key not in CATEGORIES:
@@ -452,7 +430,6 @@ async def build_rank_text(client, uid, category_key, offset=0):
 
     return text, user_pos["total_count"] if user_pos else 0
 
-
 def get_main_menu():
     btns, row = [], []
     for key, (label, _) in CATEGORIES.items():
@@ -464,7 +441,6 @@ def get_main_menu():
         btns.append(row)
     return InlineKeyboardMarkup(btns)
 
-
 @Client.on_message(filters.command("user_ranks"))
 async def ranks_command(client, message: Message):
     text = await get_home_text(message.from_user)
@@ -473,7 +449,6 @@ async def ranks_command(client, message: Message):
         caption=text,
         reply_markup=get_main_menu()
     )
-
 
 @Client.on_callback_query(filters.regex("^rankview:"))
 async def rank_view_callback(client, query: CallbackQuery):
@@ -493,7 +468,6 @@ async def rank_view_callback(client, query: CallbackQuery):
 
     btns.append([InlineKeyboardButton("🔙 Main Menu", callback_data="rank_main")])
 
-    # ✅ FIX: caption-safe edit
     try:
         await query.message.edit_caption(
             caption=text,
@@ -504,7 +478,6 @@ async def rank_view_callback(client, query: CallbackQuery):
             text,
             reply_markup=InlineKeyboardMarkup(btns)
         )
-
 
 @Client.on_callback_query(filters.regex("^rank_main"))
 async def rank_main_menu(client, query: CallbackQuery):
