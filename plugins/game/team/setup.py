@@ -5,8 +5,8 @@ from database.connection import db
 from utils.permissions import host_only
 import random
 from pyrogram.enums import ParseMode
-from plugins.game.team.init import init_match
-from plugins.game.team.init import ACTIVE_MATCHES
+from plugins.game.team import init_match
+from plugins.game.team import ACTIVE_MATCHES
 import asyncio
 from utils.mentions import mention_html  # 👈 helper
 from html import escape
