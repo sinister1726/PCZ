@@ -3,7 +3,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from utils.permissions import admin_only
 from database.games import is_game_active, end_game as close_db_game
-from plugins.game.team.init import ACTIVE_MATCHES
+from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.over_engine import end_match
 
 
