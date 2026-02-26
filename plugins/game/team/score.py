@@ -5,7 +5,6 @@ from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.scorecard import build_score_image, build_score_caption
 import time
 
-# To prevent spamming the /score command
 SCORE_COOLDOWN = {}
 
 @Client.on_message(filters.command("score") & filters.group)
@@ -13,7 +12,6 @@ async def score_cmd(client, message: Message):
     chat_id = message.chat.id
     current_time = time.time()
 
-    # 1. Cooldown Check (3 seconds)
     if chat_id in SCORE_COOLDOWN and current_time - SCORE_COOLDOWN[chat_id] < 3:
         return 
 
@@ -22,34 +20,28 @@ async def score_cmd(client, message: Message):
         return await message.reply_text("😴 <b>It’s quiet out there.</b>\nNo match running right now. start now with /start"
 , parse_mode=ParseMode.HTML)
 
-    # 🛠️ REPAIR 1: Persistence & Client Recovery
     if not match.get("client"):
         match["client"] = client
 
-    # 🛠️ REPAIR 2: Critical State Reconstruction (Fixes KeyError: 'innings', 'batting_team', etc.)
     if "innings" not in match: 
         match["innings"] = 1
 
     bat_team = match.get("batting_team")
     if not bat_team:
-        # Self-heal: Determine batting team based on innings state
         match["batting_team"] = "B" if match.get("innings") == 2 else "A"
         bat_team = match["batting_team"]
 
     if not match.get("bowling_team"):
         match["bowling_team"] = "B" if bat_team == "A" else "A"
 
-    # 🛠️ REPAIR 3: Pitch State Validation
     if not match.get("striker") or not match.get("non_striker"):
          return await message.reply_text("⏳ <b>Hold on!</b> Batters are being picked.")
 
     SCORE_COOLDOWN[chat_id] = current_time
 
-    # 2. Data Preparation with KeyError Protection
     try:
         team_data = match.get("teams", {})
 
-        # 🛠️ REPAIR 4: Team Stats & Balls Initialization (Fixes KeyError: 'balls')
         for t_code in ["A", "B"]:
             if t_code not in team_data:
                 team_data[t_code] = {"runs": 0, "wickets": 0, "balls": 0}
@@ -76,14 +68,11 @@ async def score_cmd(client, message: Message):
             "target": match.get("target")
         }
 
-        # 3. Generate Image and Caption
         host_name = match.get("host_name", "Host")
 
-        # build_score_caption is now protected by our manual key repairs above
         caption = build_score_caption(match, host_name)
         img = build_score_image(match_data)
 
-        # 4. Send Photo with Caption
         await message.reply_photo(
             photo=img,
             caption=caption,
@@ -91,21 +80,17 @@ async def score_cmd(client, message: Message):
         )
 
     except Exception as e:
-        # 🛠️ FINAL FALLBACK: Prevents the bot from being silent on UI errors
         print(f"Score System Error: {e}")
         try:
             host_name = match.get("host_name", "Host")
-            # Last-ditch effort: Send text-only score if PIL/Image fails
             caption = build_score_caption(match, host_name)
             await message.reply_text(f"📊 <b>Score Update (Text Mode):</b>\n\n{caption}")
         except Exception as inner_e:
             print(f"Critical Scorecard Failure: {inner_e}")
             await message.reply_text("❌ <b>Scorecard Sync Error. Please bowl one ball to re-initialize game state.</b>")
 
-
 @Client.on_message(filters.command("testfinal"))
 async def test_final_scorecard(client, message):
-    # Example Data for testing UI
     test_data = {
         "score_a": "124/4",
         "score_b": "125/2",
