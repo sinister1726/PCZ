@@ -2,13 +2,10 @@ from utils.mentions import mention_html
 import random
 
 def format_player_line(name, runs, balls, bowling=None, is_striker=False):
-    """Formats individual player stats with clean spacing and decorative bullets."""
-    # 🌟 Added: Visual indicator for the player currently on strike
     star = " 🏏" if is_striker else ""
     line = f"✧ <b>{name}</b>{star} = {runs} ({balls}b)"
 
     if bowling and len(bowling) > 0:
-        # Formats balls into a clean bullet-separated list for better UI
         balls_str = " • ".join(map(str, bowling))
         line += f"\n╰⊚ ʙᴏᴡʟɪɴɢ: ({balls_str})"
     else:
@@ -16,13 +13,6 @@ def format_player_line(name, runs, balls, bowling=None, is_striker=False):
     return line
 
 async def build_over_summary(client, match):
-    """
-    Creates a clean, aesthetic match scorecard summary.
-    Fixed:
-    1) Over number never shows 0
-    2) UI polish
-    3) Added Partnership + Next Bowler fields
-    """
 
     bat_team_key = match.get("batting_team", "A")
     bowl_team_key = match.get("bowling_team", "B")
@@ -31,15 +21,12 @@ async def build_over_summary(client, match):
     striker_id = match.get("striker")
     non_striker_id = match.get("non_striker")
 
-    # ✅ FIX 1: Correct completed over calculation
     team_balls = match.get("teams", {}).get(bat_team_key, {}).get("balls", 0)
     completed_over = max(1, team_balls // 6)
 
-    # 🆕 Partnership info
     partnership_runs = match.get("partnership", 0)
     partnership_balls = match.get("partnership_balls", 0)
 
-    # 🆕 Next bowler info (if already chosen)
     next_bowler_id = match.get("current_bowler")
     next_bowler_name = user_cache.get(next_bowler_id, "TBD") if next_bowler_id else "TBD"
 
@@ -86,7 +73,6 @@ async def build_over_summary(client, match):
 
         lines.append("")
 
-    # Last over balls
     recent_list = match.get("current_over_balls", [])
     recent = " • ".join(map(str, recent_list)) if recent_list else "Over completed"
 
@@ -101,12 +87,7 @@ async def build_over_summary(client, match):
 
     return "\n".join(lines)
 
-
 async def build_innings_summary(client, match):
-    """
-    Shows full player stats for the innings just completed.
-    """
-    # Swap logic check: end_innings usually swaps teams before summary
     finished_team_key = match["bowling_team"] 
     new_batting_team = match["batting_team"]
 
@@ -141,9 +122,6 @@ async def build_innings_summary(client, match):
     return "\n".join(lines)
 
 async def build_match_summary(client, match, winner):
-    """
-    Final match summary displaying top performers and MOTM.
-    """
     if winner == "Tie":
         return "🤝 <b>ᴍᴀᴛᴄʜ ᴛɪᴇᴅ!</b>\n\nWhat a spectacular finish! Both teams played brilliantly."
 
@@ -165,11 +143,9 @@ async def build_match_summary(client, match, winner):
         team_players = {uid: p for uid, p in match["players"].items() if p.get('team') == t_key}
 
         if team_players:
-            # Find Best Batter
             best_bat_id = max(team_players, key=lambda x: team_players[x].get("runs", 0))
             bb = team_players[best_bat_id]
 
-            # Find Best Bowler (Wickets first, then Economy/Runs)
             best_bowl_id = max(team_players, key=lambda x: (team_players[x].get("wickets", 0), -team_players[x].get("runs_conceded", 999)))
             bw = team_players[best_bowl_id]
 
@@ -179,9 +155,7 @@ async def build_match_summary(client, match, winner):
             res.append(f"💎 <b>ʙᴇsᴛ ʙᴏᴡʟᴇʀ:</b> {user_cache.get(best_bowl_id, 'Player')}")
             res.append(f"╰ {bw.get('wickets', 0)} wkts | {bw.get('runs_conceded', 0)} runs conceded")
 
-        # MOTM Calculation across both teams
         for uid, p in team_players.items():
-            # Standard scoring logic
             p_score = p["runs"] + (p.get("wickets", 0) * 25)
             if p_score > motm_score:
                 motm_score = p_score
