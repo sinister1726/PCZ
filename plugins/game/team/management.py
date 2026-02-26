@@ -4,21 +4,15 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ParseMode
 from plugins.game.team import ACTIVE_MATCHES
 
-# {chat_id: {"A":[], "B":[], "initiator":id, "task":asyncio.Task}}
 HOST_VOTES = {}
-
-VOTE_TIMEOUT = 120  # 2 minutes
+VOTE_TIMEOUT = 120 
 
 def sync_captain_flags(match, team):
-    """Ensure only current captain has is_captain=True"""
     captain_id = match["teams"][team].get("captain_id")
 
     for uid, pdata in match["players"].items():
         if pdata.get("team") == team:
             pdata["is_captain"] = (uid == captain_id)
-
-
-# ───────────────── CHANGE HOST COMMAND ─────────────────
 
 @Client.on_message(filters.command("changehost") & filters.group)
 async def change_host_logic(client, message):
@@ -29,7 +23,6 @@ async def change_host_logic(client, message):
     if not match:
         return await message.reply_text("❌ No active match in this group.")
 
-    # ─── DIRECT RESIGN BY HOST ───
     if user_id == match["host_id"]:
         match["phase"] = "HOST_CHANGE"
 
@@ -49,7 +42,6 @@ async def change_host_logic(client, message):
         asyncio.create_task(host_claim_timeout(msg, chat_id))
         return
 
-    # ─── VOTING FLOW ───
     all_players = match["teams"]["A"]["players"] + match["teams"]["B"]["players"]
     if user_id not in all_players:
         return await message.reply_text("🚫 Only players can initiate host vote.")
@@ -77,9 +69,6 @@ async def change_host_logic(client, message):
     HOST_VOTES[chat_id]["task"] = asyncio.create_task(
         vote_timeout(msg, chat_id)
     )
-
-
-# ───────────────── VOTE HANDLER ─────────────────
 
 @Client.on_callback_query(filters.regex("^vote_host_change$"))
 async def handle_host_vote(client, query):
@@ -136,8 +125,6 @@ async def handle_host_vote(client, query):
     )
     await query.answer("Vote counted")
 
-
-# ───────────────── CLAIM HOST ─────────────────
 @Client.on_callback_query(filters.regex("^claim_host$"))
 async def claim_host(client, query):
     chat_id = query.message.chat.id
@@ -147,19 +134,15 @@ async def claim_host(client, query):
     if not match or match.get("phase") != "HOST_CHANGE":
         return await query.answer("Invalid or expired action.", show_alert=True)
 
-    # 🚀 IMMEDIATE HOST REPLACEMENT
     match["host_id"] = user.id
     match["host_name"] = user.first_name or "Host"
 
-    # Cache name safely
     match.setdefault("user_cache", {})
     match["user_cache"][user.id] = match["host_name"]
 
-    # 🔁 RESTORE PREVIOUS PHASE
     match["phase"] = match.pop("prev_phase", "LIVE")
     match.pop("prev_host_id", None)
 
-    # 🧠 UPDATE DB TOO (CRITICAL)
     try:
         from database.games import update_host
         await update_host(chat_id, user.id)
@@ -177,8 +160,6 @@ async def claim_host(client, query):
     )
 
     await query.answer("You are now the host ✅")
-
-# ───────────────── CANCEL HANDLERS ─────────────────
 
 @Client.on_callback_query(filters.regex("^cancel_host_vote$"))
 async def cancel_vote(client, query):
@@ -200,7 +181,6 @@ async def cancel_vote(client, query):
         parse_mode=ParseMode.MARKDOWN
     )
 
-
 @Client.on_callback_query(filters.regex("^cancel_host_change$"))
 async def cancel_claim(client, query):
     chat_id = query.message.chat.id
@@ -217,9 +197,6 @@ async def cancel_claim(client, query):
         parse_mode=ParseMode.MARKDOWN
     )
 
-
-# ───────────────── TIMEOUT TASKS ─────────────────
-
 async def vote_timeout(message, chat_id):
     await asyncio.sleep(VOTE_TIMEOUT)
 
@@ -230,7 +207,6 @@ async def vote_timeout(message, chat_id):
             "Host remains unchanged.",
             parse_mode=ParseMode.MARKDOWN
         )
-
 
 async def host_claim_timeout(message, chat_id):
     await asyncio.sleep(VOTE_TIMEOUT)
@@ -244,12 +220,10 @@ async def host_claim_timeout(message, chat_id):
             parse_mode=ParseMode.MARKDOWN
         )
 
-
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ParseMode
 import asyncio
-
 
 @Client.on_message(filters.command("changecap") & filters.group)
 async def change_captain(client, message):
@@ -265,7 +239,6 @@ async def change_captain(client, message):
     teams = match.get("teams", {})
     user_cache = match.setdefault("user_cache", {})
 
-    # ─────────── TEAM DETECTION ───────────
     user_team = None
     for t in ("A", "B"):
         if user_id in teams.get(t, {}).get("players", []):
@@ -278,7 +251,6 @@ async def change_captain(client, message):
     if not is_host and not user_team:
         return await message.reply_text("🚫 Only Host or match players can use this command.")
 
-    # ─────────── MODE 1: HOST DIRECT CHANGE ───────────
     if is_host and len(args) >= 2 and args[1] in ("A", "B"):
         team = args[1]
         team_data = teams.get(team)
@@ -303,11 +275,9 @@ async def change_captain(client, message):
         if target_id not in team_data.get("players", []):
             return await message.reply_text("❌ Target must be a player of that team.")
 
-        # 🔥 AUTHORITATIVE CHANGE
         team_data["captain_id"] = target_id
         user_cache[target_id] = user_cache.get(target_id, "Player")
 
-        # 🔁 SYNC PLAYER FLAGS
         for uid, pdata in match["players"].items():
             if pdata.get("team") == team:
                 pdata["is_captain"] = (uid == target_id)
@@ -322,7 +292,6 @@ async def change_captain(client, message):
             parse_mode=ParseMode.HTML
         )
 
-    # ─────────── MODE 2: CAPTAIN DIRECT CHANGE ───────────
     if is_captain and len(args) == 2:
         team_data = teams[user_team]
 
@@ -358,18 +327,15 @@ async def change_captain(client, message):
             parse_mode=ParseMode.HTML
         )
 
-    # ─────────── MODE 3: CLAIM MODE ───────────
     if not is_host and not is_captain:
         return await message.reply_text(
             "⚠️ Permission denied.\n"
             "Only Host or current Captain can release captaincy."
         )
 
-    # 🔒 SAVE PHASE
     match["prev_phase"] = match.get("phase", "LIVE")
     match["phase"] = f"CAP_CHANGE_{user_team}"
 
-    # ⏳ AUTO CANCEL AFTER 2 MIN
     async def auto_cancel():
         await asyncio.sleep(120)
         if match.get("phase") == f"CAP_CHANGE_{user_team}":
@@ -381,7 +347,6 @@ async def change_captain(client, message):
                 f"Captaincy remains unchanged.",
             )
 
-    # Cancel old task if exists
     task = match.pop("cap_change_task", None)
     if task:
         task.cancel()
@@ -406,6 +371,7 @@ async def change_captain(client, message):
         reply_markup=btn,
         parse_mode=ParseMode.HTML
     )
+    
 @Client.on_callback_query(filters.regex(r"^claim_cap_(A|B)$"))
 async def claim_captain(client, query):
     team = query.data.split("_")[-1]
@@ -419,7 +385,6 @@ async def claim_captain(client, query):
     if user.id not in match["teams"][team]["players"]:
         return await query.answer("You are not in this team.", show_alert=True)
 
-    # 🔥 AUTHORITATIVE SWITCH
     match["teams"][team]["captain_id"] = user.id
     match["user_cache"][user.id] = user.first_name
 
@@ -427,7 +392,6 @@ async def claim_captain(client, query):
         if pdata.get("team") == team:
             pdata["is_captain"] = (uid == user.id)
 
-    # ❌ STOP TIMER
     task = match.pop("cap_change_task", None)
     if task:
         task.cancel()
@@ -440,6 +404,7 @@ async def claim_captain(client, query):
         f"🚀 Match continues!",
         parse_mode=ParseMode.HTML
     )
+    
 @Client.on_callback_query(filters.regex(r"^cancel_cap_(A|B)$"))
 async def cancel_cap_change(client, query):
     team = query.data.split("_")[-1]
