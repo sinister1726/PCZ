@@ -24,6 +24,7 @@ async def change_host_logic(client, message):
         return await message.reply_text("❌ No active match in this group.")
 
     if user_id == match["host_id"]:
+        match["prev_phase"] = match.get("phase", "LIVE")
         match["phase"] = "HOST_CHANGE"
 
         btn = InlineKeyboardMarkup([
@@ -100,6 +101,7 @@ async def handle_host_vote(client, query):
         HOST_VOTES[chat_id]["task"].cancel()
         HOST_VOTES.pop(chat_id, None)
 
+        match["prev_phase"] = match.get("phase", "LIVE")
         match["phase"] = "HOST_CHANGE"
 
         btn = InlineKeyboardMarkup([
@@ -189,7 +191,7 @@ async def cancel_claim(client, query):
     if not match or query.from_user.id != match["host_id"]:
         return await query.answer("Only host can cancel.", show_alert=True)
 
-    match["phase"] = "LIVE"
+    match["phase"] = match.pop("prev_phase", "LIVE")
 
     await query.message.edit_text(
         "❌ **HOST CHANGE CANCELLED**\n\n"
@@ -213,17 +215,12 @@ async def host_claim_timeout(message, chat_id):
 
     match = ACTIVE_MATCHES.get(chat_id)
     if match and match.get("phase") == "HOST_CHANGE":
-        match["phase"] = "LIVE"
+        match["phase"] = match.pop("prev_phase", "LIVE")
         await message.edit_text(
             "⏱️ **NO HOST CLAIMED**\n\n"
             "Host remains unchanged.",
             parse_mode=ParseMode.MARKDOWN
         )
-
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from pyrogram.enums import ParseMode
-import asyncio
 
 @Client.on_message(filters.command("changecap") & filters.group)
 async def change_captain(client, message):
@@ -282,7 +279,7 @@ async def change_captain(client, message):
             if pdata.get("team") == team:
                 pdata["is_captain"] = (uid == target_id)
 
-        match["phase"] = "LIVE"
+        match["phase"] = match.get("prev_phase", "LIVE")
 
         return await message.reply_text(
             f"🎖 <b>CAPTAIN CHANGED</b>\n\n"
@@ -318,7 +315,7 @@ async def change_captain(client, message):
             if pdata.get("team") == user_team:
                 pdata["is_captain"] = (uid == target_id)
 
-        match["phase"] = "LIVE"
+        match["phase"] = match.get("prev_phase", "LIVE")
 
         return await message.reply_text(
             f"🎖 <b>NEW TEAM {user_team} CAPTAIN</b>\n\n"
@@ -427,3 +424,4 @@ async def cancel_cap_change(client, query):
         f"❌ **CAPTAIN CHANGE CANCELLED**\n\n"
         f"Team {team} captain remains unchanged."
     )
+    
