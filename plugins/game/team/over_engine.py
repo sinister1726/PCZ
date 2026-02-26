@@ -15,7 +15,6 @@ from plugins.utilities.achieve import evaluate_and_unlock_achievements
 NVIDIA_API_KEY = "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"
 
 
-
 BALLS_PER_OVER = 6
 from html import escape
 
@@ -23,7 +22,6 @@ def safe_name(name: str) -> str:
     return escape(name or "Player")
 
 def get_mention(match, user_id):
-    """Stable HTML mention helper to prevent ENTITY_BOUNDS_INVALID."""
     name = match.get("user_cache", {}).get(user_id, "Player")
     return f'<a href="tg://user?id={user_id}">{name}</a>'
 
@@ -33,8 +31,6 @@ def _mention(user_id, match):
     name = match.get("user_cache", {}).get(user_id, "Player")
     return f"<a href='tg://user?id={user_id}'>{name}</a>"
 
-
-# 🎭 FUN COMMENTARY POOLS
 BATTER_LINES = {
     50: [
         "{p} raises the bat 🏏 Half-century loaded.",
@@ -102,7 +98,6 @@ async def announce_achievement_group(client, chat_id, achievement, match):
 
     t = achievement["type"]
 
-    # ───────── BATTER MILESTONES ─────────
     if t.startswith("BAT_"):
         runs = achievement["value"]
         user_id = achievement["user_id"]
@@ -114,7 +109,6 @@ async def announce_achievement_group(client, chat_id, achievement, match):
 
         text = random.choice(lines).format(p=p)
 
-    # ───────── BOWLER MILESTONES ─────────
     elif t.startswith("BOWL_"):
         wickets = achievement["value"]
         user_id = achievement["user_id"]
@@ -132,7 +126,6 @@ async def announce_achievement_group(client, chat_id, achievement, match):
         p = _mention(user_id, match)
         text = random.choice(BOWLER_LINES["HAT_TRICK"]).format(p=p)
 
-    # ───────── PARTNERSHIP ─────────
     elif t.startswith("PARTNERSHIP_"):
         value = achievement["value"]
         p1 = _mention(achievement["p1"], match)
@@ -162,7 +155,6 @@ async def announce_achievement_dm(client, user_id, achievement):
     except:
         pass
 
-
 def should_announce_in_group(ach):
     cond = normalize_condition(ach["condition"])
 
@@ -186,26 +178,17 @@ def normalize_condition(cond):
             return {}
     return {}
 
-
 async def update_game_in_db(match):
-    """
-    ULTIMATE SYNC: Maps live match memory to PostgreSQL columns.
-    Ensures runs, wickets, balls, phase, and innings are always current.
-    Uses safe defaults to prevent crashes during state transitions.
-    """
     try:
-        # 1. Standard Data Extraction with Defaults
         game_id = match.get("game_id")
         if not game_id:
             return print("⚠️ Skipping DB sync: match['game_id'] is missing.")
 
-        # Safely fetch team objects
         teams = match.get("teams", {})
         team_a = teams.get("A", {"runs": 0, "wickets": 0, "balls": 0})
         team_b = teams.get("B", {"runs": 0, "wickets": 0, "balls": 0})
 
         async with db.pool.acquire() as conn:
-            # 2. Atomic Update of Match State
             await conn.execute(
                 """
                 UPDATE games 
