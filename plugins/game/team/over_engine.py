@@ -398,6 +398,11 @@ async def advance_ball(match, result):
         max_overs = match.get("overs", 0)
 
         if balls_in_over >= 6:
+            match.pop("_rotate_next_ball", None)
+            match["prompt_dispatched"] = False
+            match["bowled"] = False
+            match["batted"] = False
+
             last_ball_runs = match.pop("_last_ball_runs", 0)
             
             if isinstance(last_ball_runs, int) and last_ball_runs % 2 == 0:
