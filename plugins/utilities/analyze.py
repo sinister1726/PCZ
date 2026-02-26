@@ -13,8 +13,6 @@ from PIL import Image, ImageDraw, ImageFont
 from database.connection import db
 from utils.dbpass import safe_fetchrow
 
-# ───────────────── CONFIG ─────────────────
-
 FONT_PATH = "Assets/fonts.ttf"
 
 BG = (14, 10, 20)
@@ -40,25 +38,15 @@ ANALYSIS_MOODS = [
     {"tag": "⚔️ Fighter", "style": "Grit & heart", "emoji": "⚔️💪"},
 ]
 
-# ───────────────── HELPERS ─────────────────
-
 def analyze_buttons(chat_type):
     rows = []
     if chat_type in (ChatType.GROUP, ChatType.SUPERGROUP):
-        rows.append([
-            InlineKeyboardButton("🏟 Group Analysis", callback_data="analyze:group")
-        ])
-    rows.append([
-        InlineKeyboardButton("❌ Close", callback_data="analyze:close")
-    ])
+        rows.append([InlineKeyboardButton("🏟 Group Analysis", callback_data="analyze:group")])
+    rows.append([InlineKeyboardButton("❌ Close", callback_data="analyze:close")])
     return InlineKeyboardMarkup(rows)
 
-
 def back_button():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔙 Back", callback_data="analyze:back")]
-    ])
-
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="analyze:back")]])
 
 def format_hour_12h(hour: int) -> str:
     suffix = "AM" if hour < 12 else "PM"
@@ -66,14 +54,11 @@ def format_hour_12h(hour: int) -> str:
     h = 12 if h == 0 else h
     return f"{h} {suffix}"
 
-# ───────────────── GRAPH ─────────────────
-
 def build_peak_time_graph(hour_counts: dict, peak_hour: int, group_name: str):
     W, H = 1280, 720
     img = Image.new("RGB", (W, H), BG)
     draw = ImageDraw.Draw(img)
 
-    # Fonts (load once)
     try:
         title_f = ImageFont.truetype(FONT_PATH, 52)
         label_f = ImageFont.truetype(FONT_PATH, 26)
@@ -81,32 +66,16 @@ def build_peak_time_graph(hour_counts: dict, peak_hour: int, group_name: str):
     except:
         title_f = label_f = group_f = ImageFont.load_default()
 
-    # ── Title (center top)
-    draw.text(
-        (W // 2, 40),
-        "PEAK PLAY TIME",
-        fill=PURPLE,
-        font=title_f,
-        anchor="mm"
-    )
+    draw.text((W // 2, 40), "PEAK PLAY TIME", fill=PURPLE, font=title_f, anchor="mm")
 
-    # ── Group name (top-right)
     safe_group = (group_name[:28] + "…") if len(group_name) > 30 else group_name
-    draw.text(
-        (W - 40, 46),
-        safe_group,
-        fill=MUTED,
-        font=group_f,
-        anchor="rm"
-    )
+    draw.text((W - 40, 46), safe_group, fill=MUTED, font=group_f, anchor="rm")
 
-    # Graph area
     gx1, gy1 = 100, 120
     gx2, gy2 = W - 100, H - 140
     graph_h = gy2 - gy1
     graph_w = gx2 - gx1
 
-    # Grid (lighter work)
     step_y = graph_h // 5
     for i in range(6):
         y = gy1 + i * step_y
@@ -116,38 +85,25 @@ def build_peak_time_graph(hour_counts: dict, peak_hour: int, group_name: str):
     step_x = graph_w / 23
 
     points = []
-    ellipse = draw.ellipse
-    text = draw.text
 
-    # Plot
     for h in range(24):
         val = hour_counts.get(h, 0)
         x = gx1 + h * step_x
         y = gy2 - (val / max_val) * graph_h
         points.append((x, y))
 
-        ellipse(
-            (x - 4, y - 4, x + 4, y + 4),
-            fill=PURPLE if h == peak_hour else WHITE
-        )
+        draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=PURPLE if h == peak_hour else WHITE)
 
         if h % 3 == 0:
-            text(
-                (x, gy2 + 12),
-                format_hour_12h(h),
-                fill=MUTED,
-                font=label_f,
-                anchor="mt"
-            )
+            draw.text((x, gy2 + 12), format_hour_12h(h), fill=MUTED, font=label_f, anchor="mt")
 
-    draw.line(points, fill=PURPLE, width=3)
+    if len(points) > 1:
+        draw.line(points, fill=PURPLE, width=3)
 
     buf = io.BytesIO()
     img.save(buf, "PNG", optimize=True)
     buf.seek(0)
     return buf
-
-# ───────────────── AI CALL ─────────────────
 
 async def get_ai_analysis(prompt: str) -> str:
     headers = {
@@ -170,8 +126,6 @@ async def get_ai_analysis(prompt: str) -> str:
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
 
-# ───────────────── ANALYZE CMD ─────────────────
-
 @Client.on_message(filters.command("analyze"))
 async def analyze_cmd(client, message):
     target = message.from_user
@@ -190,10 +144,7 @@ async def analyze_cmd(client, message):
         await asyncio.sleep(0.6)
         await loading.edit_text(frame)
 
-    stats = await safe_fetchrow(
-        "SELECT * FROM user_stats WHERE user_id=$1",
-        target.id
-    )
+    stats = await safe_fetchrow("SELECT * FROM user_stats WHERE user_id=$1", target.id)
 
     if not stats:
         return await loading.edit_text("😶 No data found.")
@@ -234,8 +185,6 @@ Mood: {mood['tag']}
         reply_markup=analyze_buttons(message.chat.type)
     )
 
-# ───────────────── CALLBACKS ─────────────────
-
 @Client.on_callback_query(filters.regex("^analyze:"))
 async def analyze_callback(client, query):
     action = query.data.split(":")[1]
@@ -258,10 +207,6 @@ async def analyze_callback(client, query):
 
         await send_group_analysis(client, query.message)
 
-# ───────────────── GROUP ANALYSIS ─────────────────
-
-# ───────────────── GROUP ANALYSIS ─────────────────
-
 async def send_group_analysis(client, message):
     loading = await message.reply_text("📊 Scanning group activity…")
 
@@ -269,55 +214,20 @@ async def send_group_analysis(client, message):
     title = message.chat.title or "This Group"
 
     async with db.pool.acquire() as conn:
-
-        # Hourly activity
-        rows = await conn.fetch("""
-            SELECT EXTRACT(HOUR FROM created_at) AS hour, COUNT(*) AS count
-            FROM games
-            WHERE chat_id = $1
-            GROUP BY hour
-        """, chat_id)
-
-        # Total matches
-        total_matches = await conn.fetchval(
-            "SELECT COUNT(*) FROM games WHERE chat_id=$1",
-            chat_id
-        ) or 0
-
-        # Rank calculation (MOST ACTIVE GROUPS)
-        ranks = await conn.fetch("""
-            SELECT g.chat_id,
-                   COUNT(*) +
-                   COUNT(DISTINCT gp.user_id) AS score
-            FROM games g
-            LEFT JOIN game_players gp ON gp.game_id = g.game_id
-            GROUP BY g.chat_id
-            ORDER BY score DESC
-        """)
+        rows = await conn.fetch("SELECT EXTRACT(HOUR FROM created_at) AS hour, COUNT(*) AS count FROM games WHERE chat_id = $1 GROUP BY hour", chat_id)
+        total_matches = await conn.fetchval("SELECT COUNT(*) FROM games WHERE chat_id=$1", chat_id) or 0
+        ranks = await conn.fetch("SELECT g.chat_id, COUNT(*) + COUNT(DISTINCT gp.user_id) AS score FROM games g LEFT JOIN game_players gp ON gp.game_id = g.game_id GROUP BY g.chat_id ORDER BY score DESC")
 
     if total_matches < 3:
-        return await loading.edit_text(
-            "😶 Not enough data yet.\nPlay a few matches to unlock analytics.",
-            reply_markup=back_button()
-        )
+        return await loading.edit_text("😶 Not enough data yet.\nPlay a few matches to unlock analytics.", reply_markup=back_button())
 
-    # Hour stats
     hour_counts = {int(r["hour"]): r["count"] for r in rows}
     peak_hour = max(hour_counts, key=hour_counts.get)
 
-    # Rank
-    rank = next(
-        (i + 1 for i, r in enumerate(ranks) if r["chat_id"] == chat_id),
-        None
-    )
+    rank = next((i + 1 for i, r in enumerate(ranks) if r["chat_id"] == chat_id), None)
     total_groups = len(ranks)
 
-    # Graph (now includes group name top-right)
-    graph = build_peak_time_graph(
-        hour_counts=hour_counts,
-        peak_hour=peak_hour,
-        group_name=title
-    )
+    graph = build_peak_time_graph(hour_counts=hour_counts, peak_hour=peak_hour, group_name=title)
 
     caption = (
         f"🏟️ <b>𝗚𝗥𝗢𝗨𝗣 𝗔𝗡𝗔𝗟𝗬𝗦𝗜𝗦</b>\n"
@@ -338,3 +248,4 @@ async def send_group_analysis(client, message):
         parse_mode=ParseMode.HTML,
         reply_markup=back_button()
     )
+    
