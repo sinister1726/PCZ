@@ -11,9 +11,7 @@ from plugins.game.team.summaries import (
 from plugins.utilities.graph import get_graph_buffer
 from plugins.utilities.achieve import evaluate_and_unlock_achievements
 
-
 NVIDIA_API_KEY = "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"
-
 
 BALLS_PER_OVER = 6
 from html import escape
@@ -214,34 +212,28 @@ async def update_game_in_db(match):
                 match.get("bowling_team", "B"),
                 match.get("target"),       
                 match.get("innings", 1),  
-                team_a.get("balls", 0), # 🚀 FIX: Syncs current balls for Team A
-                team_b.get("balls", 0), # 🚀 FIX: Syncs current balls for Team B
+                team_a.get("balls", 0), 
+                team_b.get("balls", 0), 
                 game_id
             )
 
     except Exception as e:
-        # Prevents the entire bot from crashing if the DB connection flickers
         print(f"❌ DB Sync Error in game {match.get('game_id')}: {e}")
 
 async def advance_ball(match, result):
-    # 🧪 DEBUG: ENTRY PROOF
-
-    # 🏆 Achievement memory (prevents duplicate announcements)
     match.setdefault("announced_achievements", {
-        "batting": {},        # user_id -> set of milestones
-        "bowling": {},        # user_id -> set of milestones
-        "partnerships": set() # {(p1, p2, value)}
+        "batting": {},  
+        "bowling": {},  
+        "partnerships": set() 
     })
 
     print("➡️ advance_ball ENTER | result =", result)
 
-    # 🚀 FIX: Client must come from match ONLY
     client = match.get("client")
-    has_client = client is not None  # ✅ ADD (NON-FATAL CLIENT)
+    has_client = client is not None  
 
     if not has_client:
         print("⚠️ client missing — continuing engine without Telegram I/O")
-        # 🔧 AUTO-HEAL CLIENT IF POSSIBLE
         from plugins.game.team.init import ACTIVE_MATCHES
         if match.get("chat_id") in ACTIVE_MATCHES:
             match["client"] = client
@@ -251,11 +243,9 @@ async def advance_ball(match, result):
         print("❌ chat_id missing")
         return
 
-    # 🔒 LOCK STRIKER (DO NOT TOUCH)
     actual_striker = match.get("striker")
     bowler_id = match.get("current_bowler")
 
-    # ✅ HARD GUARD (FIXES FIRST-BALL WICKET BUG)
     if not actual_striker or not bowler_id:
         print("⚠️ striker/bowler missing on ball — abort safely")
         return
@@ -279,20 +269,17 @@ async def advance_ball(match, result):
     match.setdefault("current_over_balls", [])
 
     try:
-        # ───────────────── RUNS ─────────────────
         if isinstance(result, int):
             runs = result
 
-            # 1️⃣ UPDATE TEAM SCORE
             bat_team["runs"] += runs
             bat_team["balls"] += 1
 
             bat_team.setdefault("over_history", [])
-            bat_team["over_history"].append(runs)   # graph-safe
+            bat_team["over_history"].append(runs) 
 
             match["partnership"] += runs
             match["partnership_balls"] += 1
-            # 🤝 PARTNERSHIP ACHIEVEMENTS
             if has_client:
                 s = match.get("striker")
                 ns = match.get("non_striker")
@@ -315,13 +302,10 @@ async def advance_ball(match, result):
                                 parse_mode=ParseMode.HTML
                             )
 
-
-            # 2️⃣ UPDATE BATTER
             if actual_striker in match["players"]:
                 p = match["players"][actual_striker]
                 p["runs"] += runs
                 p["balls_faced"] += 1
-                # 🏏 BATTER ACHIEVEMENTS (LIVE)
                 if has_client:
                     announced = match["announced_achievements"]["batting"].setdefault(actual_striker, set())
 
@@ -347,27 +331,19 @@ async def advance_ball(match, result):
                 elif runs == 6:
                     p["sixes_count"] = p.get("sixes_count", 0) + 1
                     
-
-            # 3️⃣ UPDATE BOWLER
             if bowler_id in match["players"]:
                 b = match["players"][bowler_id]
                 b["runs_conceded"] += runs
                 b["balls_bowled"] += 1
                 b.setdefault("bowling_balls", []).append(result)
 
-            # 4️⃣ BALL TRACKING
             match["current_over_balls"].append(result)
             match["total_balls"] += 1
             match["_rotate_next_ball"] = (runs % 2 != 0)
 
-            # Remember last ball (over-end logic only)
             match["_last_ball_runs"] = runs
             match["_last_ball_wicket"] = False
 
-            # ─────────────────────────────────────────
-            # 🏁 FINAL AUTHORITY: TARGET CHASE CHECK
-            # (THIS WAS MISSING — ROOT CAUSE FIX)
-            # ─────────────────────────────────────────
             if match.get("innings") == 2:
                 target = match.get("target")
 
@@ -381,14 +357,11 @@ async def advance_ball(match, result):
                         "non_striker": None
                     })
 
-                    # 💾 Sync final state BEFORE ending
                     from plugins.game.team.over_engine import update_game_in_db, end_match
                     await update_game_in_db(match)
                     await end_match(match)
                     return
-
-
-        # ───────────────── WICKET ─────────────────
+                    
         elif result == "W":
             match.pop("_rotate_next_ball", None)
 
@@ -405,9 +378,6 @@ async def advance_ball(match, result):
                 p["balls_faced"] += 1
                 p["is_out"] = True
 
-            # ─────────────────────────────────────────
-            # ✅ FIX #1: CLEAR BATTER ROLE FROM DB (NO RESURRECTION)
-            # ─────────────────────────────────────────
             try:
                 async with db.pool.acquire() as conn:
                     await conn.execute(
@@ -421,13 +391,11 @@ async def advance_ball(match, result):
                     )
             except Exception as e:
                 print("❌ DB role clear failed on wicket:", e)
-            # ─────────────────────────────────────────
 
             if bowler_id in match["players"]:
                 b = match["players"][bowler_id]
                 b["balls_bowled"] += 1
                 b["wickets"] = b.get("wickets", 0) + 1
-                # 🎯 BOWLER ACHIEVEMENTS
                 if has_client:
                     announced = match["announced_achievements"]["bowling"].setdefault(bowler_id, set())
 
@@ -444,7 +412,6 @@ async def advance_ball(match, result):
                             f"🏆 <b>Achievement!</b>\n<i>{msg[b['wickets']].format(p=_mention(bowler_id))}</i>",
                             parse_mode=ParseMode.HTML
                         )
-                        # 🎩 HAT-TRICK CHECK
                         balls = b.get("bowling_balls", [])
                         if has_client and len(balls) >= 3 and balls[-3:] == ["W", "W", "W"]:
                             announced = match["announced_achievements"]["bowling"].setdefault(bowler_id, set())
@@ -457,12 +424,9 @@ async def advance_ball(match, result):
                                     parse_mode=ParseMode.HTML
                                 )
 
-
-
             match["current_over_balls"].append("W")
             match["total_balls"] += 1
 
-            # ✅ DETECT LAST BALL WICKET
             is_last_ball_wicket = len(match["current_over_balls"]) >= 6
             match["_wicket_on_last_ball"] = is_last_ball_wicket
 
@@ -472,17 +436,11 @@ async def advance_ball(match, result):
             from plugins.game.team.over_engine import update_game_in_db
             await update_game_in_db(match)
 
-            # ─────────────────────────────────────────
-            # 🛑 CRITICAL FIX: LAST BALL WICKET
-            # ➜ END OVER IMMEDIATELY (NO EXTRA BALL)
-            # ─────────────────────────────────────────
             if match.get("_wicket_on_last_ball"):
-                # 🧠 CHECK ALL-OUT FIRST (CRITICAL FIX)
                 total_players = len(bat_team.get("players", []))
                 wickets = bat_team.get("wickets", 0)
 
                 if wickets >= total_players - 1:
-                    # ✅ ALL OUT ON LAST BALL
                     match.update({
                         "phase": "finished",
                         "prompt_dispatched": False,
@@ -499,9 +457,8 @@ async def advance_ball(match, result):
                         from plugins.game.team.over_engine import end_innings
                         await end_innings(match)
 
-                    return  # 🔒 HARD STOP — DO NOT END OVER
+                    return 
 
-                # 🟡 NOT ALL OUT → NORMAL LAST-BALL WICKET FLOW
                 match.update({
                     "bowled": False,
                     "batted": False,
@@ -535,13 +492,9 @@ async def advance_ball(match, result):
                 await end_over(match)
                 return
 
-            # ─────────────────────────────────────────
-            # 🏁 FINAL AUTHORITY: 2ND INNINGS MATCH END
-            # ─────────────────────────────────────────
             if match.get("innings") == 2:
                 target = match.get("target")
 
-                # ✅ TARGET CHASED
                 if target and bat_team["runs"] >= target:
                     match.update({
                         "phase": "finished",
@@ -556,7 +509,6 @@ async def advance_ball(match, result):
                     await end_match(match)
                     return
 
-                # ✅ ALL OUT
                 total_players = len(bat_team.get("players", []))
                 if bat_team["wickets"] >= total_players - 1:
                     match.update({
@@ -572,9 +524,6 @@ async def advance_ball(match, result):
                     await end_match(match)
                     return
 
-            # ─────────────────────────────────────────
-            # CHECK AVAILABLE BATTERS (NORMAL FLOW)
-            # ─────────────────────────────────────────
             all_players = match["teams"][bat_team_key]["players"]
             available = [
                 u for u in all_players
@@ -612,14 +561,10 @@ async def advance_ball(match, result):
                         parse_mode=ParseMode.HTML
                     )
 
-
                 from plugins.game.team.over_engine import end_innings
                 await end_innings(match)
                 return
 
-            # ─────────────────────────────────────────
-            # NORMAL WICKET (NOT LAST BALL)
-            # ─────────────────────────────────────────
             if not match.get("_wicket_on_last_ball"):
                 match.update({
                     "bowled": False,
@@ -631,7 +576,6 @@ async def advance_ball(match, result):
                 await update_game_in_db(match)
 
                 if has_client:
-                    # 🎭 Savage + funny wicket lines (professional tone)
                     wicket_lines = [
                         "That one had the batter’s name written on it.",
                         "Timber! The stumps won that argument.",
@@ -643,7 +587,6 @@ async def advance_ball(match, result):
                         "The ball did the talking."
                     ]
 
-                    # 🧢 Mention batting captain (safe fallback)
                     bat_team_key = match.get("batting_team")
                     captain_id = match.get("team_captains", {}).get(bat_team_key)
 
@@ -666,8 +609,6 @@ async def advance_ball(match, result):
 
             return
 
-
-        # ───────────────── OVER CHECK ─────────────────
         balls_in_over = len(match["current_over_balls"])
         max_overs = match.get("overs", 0)
 
@@ -677,13 +618,10 @@ async def advance_ball(match, result):
             match["bowled"] = False
             match["batted"] = False
 
-            # 🔥 LAST BALL STRIKE RULES (ONLY HERE)
             last_ball_runs = match.pop("_last_ball_runs", None)
             last_ball_wicket = match.pop("_last_ball_wicket", False)
             wicket_on_last_ball = match.pop("_wicket_on_last_ball", False)
 
-
-            # ❌ NO STRIKE ROTATION IF WICKET ON LAST BALL
             if last_ball_wicket and not wicket_on_last_ball:
                 if match.get("striker") and match.get("non_striker"):
                     match["striker"], match["non_striker"] = (
@@ -693,14 +631,12 @@ async def advance_ball(match, result):
 
             elif isinstance(last_ball_runs, int):
                 if last_ball_runs % 2 == 0:
-                    # Rule 2 → EVEN
                     if match.get("striker") and match.get("non_striker"):
                         match["striker"], match["non_striker"] = (
                             match["non_striker"],
                             match["striker"]
                         )
                 else:
-                    # Rule 1 → ODD → NO ROTATION
                     pass
 
             if match.get("current_over", 1) >= max_overs:
@@ -712,7 +648,6 @@ async def advance_ball(match, result):
 
             return
 
-        # ───────────────── NEXT BALL (UNCHANGED) ─────────────────
         match["bowled"] = False
         match["batted"] = False
         match["last_bowl"] = None
@@ -727,9 +662,6 @@ async def advance_ball(match, result):
                 )
 
         if has_client:
-            # 🔒 Ensure result fully processed before next promp
-
-            # ───────── ACHIEVEMENT CHECK (POST-BALL) ─────────
             try:
                 from plugins.utilities.achieve import evaluate_and_unlock_achievements
 
@@ -756,7 +688,6 @@ async def advance_ball(match, result):
             from plugins.game.team.state import start_first_ball
             await start_first_ball(client, match)
 
-
     except Exception as e:
         print("❌ advance_ball ERROR:", e)
 
@@ -772,15 +703,11 @@ async def advance_ball(match, result):
             "| prompt unlocked"
         )
 
-
-# ───────────────── END OVER ─────────────────
 async def end_over(match):
-    # 🚀 FIX: Client must come from match ONLY
     client = match.get("client")
     if not client:
         print("❌ CRITICAL: client missing in end_over")
 
-        # 🔓 SAFE UNLOCK (PREVENT FREEZE)
         match["bowled"] = False
         match["batted"] = False
         match["prompt_dispatched"] = False
@@ -792,7 +719,6 @@ async def end_over(match):
         print("❌ chat_id missing in end_over")
         return
 
-    # 🛠️ SAFETY FIX: Recovery for missing keys
     bat_team_key = match.get("batting_team", "A")
     bat_team = match.get("teams", {}).get(bat_team_key)
 
@@ -800,7 +726,6 @@ async def end_over(match):
         print(f"❌ Error: Batting team data missing in end_over for chat {chat_id}")
         return
 
-    # 1️⃣ Update Worm Graph history
     if "over_history" not in bat_team:
         bat_team["over_history"] = []
     bat_team["over_history"].append(0)
@@ -808,20 +733,16 @@ async def end_over(match):
     completed_over = match.get("current_over", 1)
     bowler_id = match.get("current_bowler")
 
-    # ✅ CACHE OVER BALLS FOR AI (CRITICAL FIX)
     last_over_balls = list(match.get("current_over_balls", []))
 
-    # 2️⃣ Cache bowler info
     match["last_over_bowler_name"] = match.get("user_cache", {}).get(
         bowler_id, "The previous bowler"
     )
     match["last_over_bowler"] = bowler_id
 
-    # 3️⃣ 📊 BUILD SUMMARY FIRST
     from plugins.game.team.summaries import build_over_summary
     summary_text = await build_over_summary(client, match)
 
-    # 4️⃣ 🧹 RESET OVER STATE
     match.update({
         "current_bowler": None,
         "current_over": completed_over + 1,
@@ -834,9 +755,6 @@ async def end_over(match):
         "prompt_dispatched": False
     })
 
-    # ─────────────────────────────────────────────
-    # ✅ DO NOT WIPE BATTERS
-    # ─────────────────────────────────────────────
     players = bat_team.get("players", [])
 
     def is_alive(uid):
@@ -855,9 +773,6 @@ async def end_over(match):
         alive = [u for u in players if is_alive(u)]
         match["non_striker"] = alive[0] if alive else None
 
-    # ─────────────────────────────────────────────
-    # ✅ HARD DB ROLE SYNC
-    # ─────────────────────────────────────────────
     try:
         async with db.pool.acquire() as conn:
             await conn.execute(
@@ -879,11 +794,9 @@ async def end_over(match):
     except Exception as e:
         print("❌ Role sync error in end_over:", e)
 
-    # 6️⃣ 💾 SYNC MATCH STATE
     from plugins.game.team.over_engine import update_game_in_db
     await update_game_in_db(match)
 
-    # 7️⃣ 📈 GRAPH (OPTIONAL)
     try:
         buf = await get_graph_buffer(match)
         await client.send_photo(
@@ -899,7 +812,6 @@ async def end_over(match):
         except:
             pass
 
-    # ───────────────── AI OVER ANALYSER (ALWAYS RUNS NOW) ─────────────────
     try:
         import asyncio, httpx
 
@@ -958,13 +870,11 @@ Give a sharp over reaction.
     except Exception as e:
         print("❌ Over AI analysis failed:", e)
 
-    # 8️⃣ 🏁 END INNINGS CHECK
     if completed_over >= match.get("overs", 0):
         from plugins.game.team.over_engine import end_innings
         await end_innings(match)
         return
-
-    # 9️⃣ 👤 NEXT BOWLER PROMPT
+        
     from plugins.game.team.over_engine import send_next_bowler_prompt
     await send_next_bowler_prompt(match)
 
@@ -975,18 +885,14 @@ async def send_next_bowler_prompt(match):
     if not client or not chat_id:
         print("❌ client/chat_id missing in send_next_bowler_prompt")
 
-        # 🔓 SAFE UNLOCK
         match["prompt_dispatched"] = False
         match["phase"] = "READY"
         return
 
-    # 1️⃣ Ensure phase allows /bowling
     match["phase"] = "READY"
-
-    # 2️⃣ 🔓 CRITICAL: Reset prompt lock
+    
     match["prompt_dispatched"] = False
 
-    # 3️⃣ Data Retrieval
     last_name = match.get("last_over_bowler_name", "The previous bowler")
     curr_over = match.get("current_over", 1)
 
@@ -1008,15 +914,11 @@ async def send_next_bowler_prompt(match):
     except Exception as e:
         print(f"Error sending bowler prompt: {e}")
 
-
-# ───────────────── END INNINGS ─────────────────
 async def end_innings(match):
-    # 🚀 FIX: Client must come from match ONLY
     client = match.get("client")
     if not client:
         print("❌ CRITICAL: client missing in end_innings")
 
-        # 🔓 SAFE UNLOCK (PREVENT FREEZE)
         match["bowled"] = False
         match["batted"] = False
         match["prompt_dispatched"] = False
@@ -1031,18 +933,14 @@ async def end_innings(match):
         print("❌ chat_id / game_id missing in end_innings")
         return
 
-    # ───────────── INNINGS 1 END ─────────────
     if match.get("innings", 1) == 1:
 
-        # ✅ CACHE INNINGS SNAPSHOT FOR AI (CRITICAL FIX)
         bat_snapshot = match.get("teams", {}).get(current_batting_team, {}).copy()
         balls_snapshot = bat_snapshot.get("balls", 0)
 
-        # 1️⃣ CALCULATE TARGET
         match["target"] = bat_snapshot.get("runs", 0) + 1
         match["innings"] = 2
 
-        # 2️⃣ SWAP TEAMS
         match["batting_team"], match["bowling_team"] = (
             match.get("bowling_team", "B"),
             match.get("batting_team", "A")
@@ -1050,7 +948,6 @@ async def end_innings(match):
         new_batting_team = match["batting_team"]
         match["phase"] = "READY"
 
-        # 3️⃣ RESET DATABASE ROLES
         async with db.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
@@ -1062,7 +959,6 @@ async def end_innings(match):
                     game_id, new_batting_team
                 )
 
-        # 4️⃣ RESET FLOW FLAGS
         match.update({
             "partnership": 0,
             "partnership_balls": 0,
@@ -1081,14 +977,11 @@ async def end_innings(match):
             "last_bowl": None
         })
 
-        # 5️⃣ SAVE STATE
         from plugins.game.team.over_engine import update_game_in_db, build_innings_summary
         await update_game_in_db(match)
 
-        # 📊 BUILD INNINGS SUMMARY
         innings_text = await build_innings_summary(client, match)
 
-        # 📈 GRAPH (OPTIONAL)
         try:
             from plugins.utilities.graph import get_graph_buffer
             buf = await get_graph_buffer(match)
@@ -1105,7 +998,6 @@ async def end_innings(match):
             except:
                 pass
 
-        # ───────── AI INNINGS ANALYSIS (ALWAYS RUNS) ─────────
         try:
             import asyncio, random
 
@@ -1158,7 +1050,6 @@ Give 4–5 lines:
         except Exception as e:
             print("❌ AI Innings Analysis Error:", e)
 
-        # 📣 INNINGS BREAK MESSAGE
         await client.send_message(
             chat_id,
             (
@@ -1171,11 +1062,9 @@ Give 4–5 lines:
         )
         return
 
-    # ───────────── INNINGS 2 END ─────────────
     from plugins.game.team.over_engine import end_match
     await end_match(match)
 
-# ───────────────── END MATCH ─────────────────
 async def end_match(match, forced: bool = False):
     import asyncio
     import httpx
@@ -1199,7 +1088,6 @@ async def end_match(match, forced: bool = False):
     r_a, r_b = team_a["runs"], team_b["runs"]
     w_a, w_b = team_a["wickets"], team_b["wickets"]
 
-    # ───────── RESULT LOGIC ─────────
     if r_a > r_b:
         winner_key = "A"
         margin = f"won by {r_a - r_b} runs"
@@ -1217,13 +1105,11 @@ async def end_match(match, forced: bool = False):
 
     res_title = "🏏 MATCH COMPLETE" if winner_key not in ("Tie", "No Result") else "🤝 MATCH TIED"
 
-    # ───────── IMMEDIATE RESULT MESSAGE ─────────
     await client.send_message(
         chat_id,
         f"{res_title}\n\n🏆 Team {winner_key} {margin}"
     )
 
-    # ───────── CLEANUP FIRST (FAST EXIT) ─────────
     match["phase"] = "finished"
 
     try:
@@ -1246,10 +1132,8 @@ async def end_match(match, forced: bool = False):
 
     print(f"✅ Match {match.get('game_id')} cleanup done")
 
-    # ───────── BACKGROUND TASK (AI + GRAPH + SUMMARY) ─────────
     async def post_match_extras():
         try:
-            # ───── PLAYER OF THE MATCH (WINNING TEAM ONLY) ─────
             if not early_force_end and winner_key in ("A", "B"):
                 players = match.get("players", {})
                 winning_players = teams[winner_key].get("players", [])
@@ -1266,7 +1150,6 @@ async def end_match(match, forced: bool = False):
                     p = players[best_id]
                     name = match.get("user_cache", {}).get(best_id, "Player")
 
-                    # ───── AI ANALYSIS (SHORT + FAST) ─────
                     prompt = f"""
 Player: {name}
 Runs: {p.get('runs',0)}
@@ -1310,7 +1193,6 @@ Give a short 2–3 line cricket analysis.
                     await client.send_message(chat_id, potm_text)
                     await client.send_message(LOG_GC_ID, potm_text)
 
-            # ───── SUMMARY + GRAPH ─────
             from plugins.game.team.summaries import build_match_summary
             summary_text = await build_match_summary(client, match, winner_key)
 
