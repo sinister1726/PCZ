@@ -15,9 +15,7 @@ class Config:
 
     NVIDIA_API_KEY = "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"
 
-
     START_IMAGE = "https://graph.org/file/4bb1b361de5ad086c9978-e0b4b80898c072471f.jpg"
-
 
     LOG_CHANNEL = -1003527724170
 
