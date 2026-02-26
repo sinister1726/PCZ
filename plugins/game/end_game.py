@@ -6,9 +6,6 @@ from database.games import is_game_active, end_game as close_db_game
 from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.over_engine import end_match
 
-
-# ───────────────── /endgame COMMAND ─────────────────
-
 @Client.on_message(filters.command("endgame") & filters.group)
 @admin_only
 async def end_game_command(client, message):
@@ -35,9 +32,6 @@ async def end_game_command(client, message):
         reply_markup=buttons
     )
 
-
-# ───────────────── CONFIRM FORCE END ─────────────────
-
 @Client.on_callback_query(filters.regex("^confirm_endgame$"))
 @admin_only
 async def confirm_endgame(client, query):
@@ -46,28 +40,31 @@ async def confirm_endgame(client, query):
 
     match = ACTIVE_MATCHES.get(chat_id)
 
-    # Default message
     end_text = (
         "🛑 **𝗚𝗔𝗠𝗘 𝗙𝗢𝗥𝗖𝗘 𝗘𝗡𝗗𝗘𝗗**\n"
         "`Match summary & stats saved.`"
     )
 
     if match:
-        match["client"] = client  # safety
+        match["client"] = client  
 
         balls_played = match.get("total_balls", 0)
         early_force_end = balls_played < 6
 
         await end_match(match, forced=True)
 
-        # 🔥 CHANGE MESSAGE IF ENDED BEFORE 1 OVER
         if early_force_end:
             end_text = (
                 "🛑 **𝗚𝗔𝗠𝗘 𝗙𝗢𝗥𝗖𝗘 𝗘𝗡𝗗𝗘𝗗**\n"
                 "`Match stopped early. Player stats saved.`"
             )
 
-    # ── CLOSE DB GAME (SAFETY) ──
     await close_db_game(chat_id)
-
     await query.message.edit_text(end_text)
+
+@Client.on_callback_query(filters.regex("^cancel_endgame$"))
+@admin_only
+async def cancel_endgame(client, query):
+    await query.answer("Cancelled")
+    await query.message.delete()
+    
