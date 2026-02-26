@@ -53,7 +53,6 @@ async def start_cmd(client: Client, message):
         ]
     )
 
-    # 🖼️ Photo → fallback to text (safe)
     try:
         await message.reply_photo(
             photo=Config.START_IMAGE,
@@ -68,7 +67,6 @@ async def start_cmd(client: Client, message):
             reply_markup=buttons
         )
 
-    # 📥 Log new users only
     if is_new:
         try:
             count = await total_users()
@@ -85,9 +83,6 @@ async def start_cmd(client: Client, message):
             )
         except Exception:
             pass
-
-
-
 
 @Client.on_message(filters.private, group=1)
 async def auto_register_user(client: Client, message):
