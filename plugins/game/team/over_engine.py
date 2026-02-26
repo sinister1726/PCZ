@@ -227,109 +227,81 @@ async def advance_ball(match, result):
         "partnerships": set() 
     })
 
-    print("➡️ advance_ball ENTER | result =", result)
+    print(f"➡️ advance_ball ENTER | result = {result} | balls_so_far = {len(match.get('current_over_balls', []))}")
+
+    if len(match.get("current_over_balls", [])) >= 6:
+        print("⚠️ Over already finished. Triggering end_over.")
+        from plugins.game.team.over_engine import end_over
+        return await end_over(match)
 
     client = match.get("client")
     has_client = client is not None  
 
     if not has_client:
-        print("⚠️ client missing — continuing engine without Telegram I/O")
+        print("⚠️ client missing — attempting recovery")
         from plugins.game.team.init import ACTIVE_MATCHES
         if match.get("chat_id") in ACTIVE_MATCHES:
             match["client"] = client
 
     chat_id = match.get("chat_id")
     if not chat_id:
-        print("❌ chat_id missing")
         return
 
     actual_striker = match.get("striker")
     bowler_id = match.get("current_bowler")
 
     if not actual_striker or not bowler_id:
-        print("⚠️ striker/bowler missing on ball — abort safely")
+        print("⚠️ striker/bowler missing — aborting ball")
         return
 
     bat_team_key = match.get("batting_team", "A")
     bat_team = match.get("teams", {}).get(bat_team_key)
+    
     if not bat_team:
-        print("❌ batting team missing:", bat_team_key)
         return
 
     bat_team.setdefault("balls", 0)
-
-    other_team_key = "B" if bat_team_key == "A" else "A"
-    other_team = match.get("teams", {}).get(other_team_key)
-    if other_team:
-        other_team.setdefault("balls", 0)
-
+    
     for key in ["total_balls", "ball_in_over", "partnership", "partnership_balls"]:
         match.setdefault(key, 0)
-
     match.setdefault("current_over_balls", [])
 
     try:
         if isinstance(result, int):
             runs = result
-
             bat_team["runs"] += runs
             bat_team["balls"] += 1
-
-            bat_team.setdefault("over_history", [])
-            bat_team["over_history"].append(runs) 
+            bat_team.setdefault("over_history", []).append(runs) 
 
             match["partnership"] += runs
             match["partnership_balls"] += 1
+            
             if has_client:
                 s = match.get("striker")
                 ns = match.get("non_striker")
-
                 if s and ns:
                     for value in (50, 100):
                         key = tuple(sorted((s, ns)) + [value])
-
                         if match["partnership"] >= value and key not in match["announced_achievements"]["partnerships"]:
                             match["announced_achievements"]["partnerships"].add(key)
-
-                            msg = {
-                                50: "Nice stand building 🤝 {p1} & {p2} cross 50",
-                                100: "CENTURY STAND 💯 {p1} & {p2} are unstoppable!"
-                            }
-
-                            await client.send_message(
-                                chat_id,
-                                f"🏆 <b>Achievement!</b>\n<i>{msg[value].format(p1=_mention(s), p2=_mention(ns))}</i>",
-                                parse_mode=ParseMode.HTML
-                            )
+                            msg = {50: "Nice stand 🤝 {p1} & {p2} cross 50", 100: "CENTURY STAND 💯 {p1} & {p2} are unstoppable!"}
+                            await client.send_message(chat_id, f"🏆 <b>Achievement!</b>\n<i>{msg[value].format(p1=_mention(s, match), p2=_mention(ns, match))}</i>", parse_mode=ParseMode.HTML)
 
             if actual_striker in match["players"]:
                 p = match["players"][actual_striker]
                 p["runs"] += runs
                 p["balls_faced"] += 1
+                
                 if has_client:
                     announced = match["announced_achievements"]["batting"].setdefault(actual_striker, set())
-
                     for milestone in (50, 100, 150, 250):
                         if p["runs"] >= milestone and milestone not in announced:
                             announced.add(milestone)
+                            lines = {50: "{p} brings up a classy 50 🏏", 100: "CENTURY 💯 {p} is on fire!", 150: "150 up 😬 Domination by {p}", 250: "🚨 HISTORY 🚨 {p} smashes 250!"}
+                            await client.send_message(chat_id, f"🏆 <b>Achievement!</b>\n<i>{lines[milestone].format(p=_mention(actual_striker, match))}</i>", parse_mode=ParseMode.HTML)
 
-                            lines = {
-                                50: "{p} brings up a classy 50 🏏",
-                                100: "CENTURY 💯 {p} is on fire!",
-                                150: "150 up 😬 This is domination by {p}",
-                                250: "🚨 HISTORY 🚨 {p} smashes 250!"
-                            }
-
-                            await client.send_message(
-                                chat_id,
-                                f"🏆 <b>Achievement!</b>\n<i>{lines[milestone].format(p=_mention(actual_striker))}</i>",
-                                parse_mode=ParseMode.HTML
-                            )
-
-                if runs == 4:
-                    p["fours_count"] = p.get("fours_count", 0) + 1
-                elif runs == 6:
-                    p["sixes_count"] = p.get("sixes_count", 0) + 1
+                if runs == 4: p["fours_count"] = p.get("fours_count", 0) + 1
+                elif runs == 6: p["sixes_count"] = p.get("sixes_count", 0) + 1
                     
             if bowler_id in match["players"]:
                 b = match["players"][bowler_id]
@@ -340,38 +312,22 @@ async def advance_ball(match, result):
             match["current_over_balls"].append(result)
             match["total_balls"] += 1
             match["_rotate_next_ball"] = (runs % 2 != 0)
-
             match["_last_ball_runs"] = runs
-            match["_last_ball_wicket"] = False
-
-            if match.get("innings") == 2:
-                target = match.get("target")
-
-                if target and bat_team["runs"] >= target:
-                    match.update({
-                        "phase": "finished",
-                        "prompt_dispatched": False,
-                        "bowled": False,
-                        "batted": False,
-                        "striker": None,
-                        "non_striker": None
-                    })
-
-                    from plugins.game.team.over_engine import update_game_in_db, end_match
-                    await update_game_in_db(match)
-                    await end_match(match)
-                    return
-                    
+            
+            if match.get("innings") == 2 and match.get("target") and bat_team["runs"] >= match["target"]:
+                match.update({"phase": "finished", "striker": None, "non_striker": None})
+                from plugins.game.team.over_engine import update_game_in_db, end_match
+                await update_game_in_db(match)
+                await end_match(match)
+                return
+                
         elif result == "W":
             match.pop("_rotate_next_ball", None)
-
             bat_team["wickets"] += 1
             bat_team["balls"] += 1
-            bat_team.setdefault("over_history", [])
-            bat_team["over_history"].append(0)
-
-            match["partnership"] = 0
-            match["partnership_balls"] = 0
+            bat_team.setdefault("over_history", []).append(0)
+            match["partnership"] = match["partnership_balls"] = 0
+            match["_last_ball_runs"] = None
 
             if actual_striker in match["players"]:
                 p = match["players"][actual_striker]
@@ -379,265 +335,74 @@ async def advance_ball(match, result):
                 p["is_out"] = True
 
             try:
+                from database.connection import db
                 async with db.pool.acquire() as conn:
-                    await conn.execute(
-                        """
-                        UPDATE game_players
-                        SET role = NULL, is_out = TRUE
-                        WHERE game_id = $1 AND user_id = $2
-                        """,
-                        match.get("game_id"),
-                        actual_striker
-                    )
+                    await conn.execute("UPDATE game_players SET role = NULL, is_out = TRUE WHERE game_id = $1 AND user_id = $2", match.get("game_id"), actual_striker)
             except Exception as e:
-                print("❌ DB role clear failed on wicket:", e)
+                print("❌ DB role clear failed:", e)
 
             if bowler_id in match["players"]:
                 b = match["players"][bowler_id]
                 b["balls_bowled"] += 1
                 b["wickets"] = b.get("wickets", 0) + 1
+                
                 if has_client:
                     announced = match["announced_achievements"]["bowling"].setdefault(bowler_id, set())
-
                     if b["wickets"] in (3, 5) and b["wickets"] not in announced:
                         announced.add(b["wickets"])
-
-                        msg = {
-                            3: "{p} picks up a 3-fer 🎯",
-                            5: "FIVE-FOR 🖐️ {p} destroys the batting!"
-                        }
-
-                        await client.send_message(
-                            chat_id,
-                            f"🏆 <b>Achievement!</b>\n<i>{msg[b['wickets']].format(p=_mention(bowler_id))}</i>",
-                            parse_mode=ParseMode.HTML
-                        )
-                        balls = b.get("bowling_balls", [])
-                        if has_client and len(balls) >= 3 and balls[-3:] == ["W", "W", "W"]:
-                            announced = match["announced_achievements"]["bowling"].setdefault(bowler_id, set())
-                            if "HAT" not in announced:
-                                announced.add("HAT")
-
-                                await client.send_message(
-                                    chat_id,
-                                    f"🎩 <b>HAT-TRICK!</b>\n<i>{_mention(bowler_id)} takes three in three 😱</i>",
-                                    parse_mode=ParseMode.HTML
-                                )
+                        msg = {3: "{p} picks up a 3-fer 🎯", 5: "FIVE-FOR 🖐️ {p} destroys the batting!"}
+                        await client.send_message(chat_id, f"🏆 <b>Achievement!</b>\n<i>{msg[b['wickets']].format(p=_mention(bowler_id, match))}</i>", parse_mode=ParseMode.HTML)
+                        
+                    balls = b.get("bowling_balls", [])
+                    if len(balls) >= 3 and balls[-3:] == ["W", "W", "W"] and "HAT" not in announced:
+                        announced.add("HAT")
+                        await client.send_message(chat_id, f"🎩 <b>HAT-TRICK!</b>\n<i>{_mention(bowler_id, match)} takes three in three 😱</i>", parse_mode=ParseMode.HTML)
 
             match["current_over_balls"].append("W")
             match["total_balls"] += 1
 
             is_last_ball_wicket = len(match["current_over_balls"]) >= 6
-            match["_wicket_on_last_ball"] = is_last_ball_wicket
-
-            match["_last_ball_runs"] = None
-            match["_last_ball_wicket"] = True
-
+            
             from plugins.game.team.over_engine import update_game_in_db
             await update_game_in_db(match)
 
-            if match.get("_wicket_on_last_ball"):
-                total_players = len(bat_team.get("players", []))
-                wickets = bat_team.get("wickets", 0)
+            total_players = len(bat_team.get("players", []))
+            is_all_out = bat_team["wickets"] >= total_players - 1
 
-                if wickets >= total_players - 1:
-                    match.update({
-                        "phase": "finished",
-                        "prompt_dispatched": False,
-                        "bowled": False,
-                        "batted": False,
-                        "striker": None,
-                        "non_striker": None
-                    })
-
-                    if match.get("innings") == 2:
-                        from plugins.game.team.over_engine import end_match
-                        await end_match(match)
-                    else:
-                        from plugins.game.team.over_engine import end_innings
-                        await end_innings(match)
-
-                    return 
-
-                match.update({
-                    "bowled": False,
-                    "batted": False,
-                    "prompt_dispatched": False,
-                    "striker": match.get("non_striker"),
-                    "non_striker": None,
-                    "_force_next_batter_role": "non_striker"
-                })
-
+            if is_all_out:
+                match.update({"phase": "finished", "striker": None, "non_striker": None})
                 if has_client:
-                    bat_team_key = match.get("batting_team")
-                    captain_id = match.get("team_captains", {}).get(bat_team_key)
+                    await client.send_message(chat_id, f"☝️ <b>WICKET!</b>\n🚫 <b>ALL OUT!</b>\n\n<i>Complete collapse. Innings closed.</i>", parse_mode=ParseMode.HTML)
+                
+                from plugins.game.team.over_engine import end_match, end_innings
+                if match.get("innings") == 2:
+                    await end_match(match)
+                else:
+                    await end_innings(match)
+                return
 
-                    captain_mention = (
-                        f"<a href='tg://user?id={captain_id}'>Captain</a>"
-                        if captain_id else "<b>Batting Captain</b>"
-                    )
-
-                    await client.send_message(
-                        chat_id,
-                        (
-                            "☝️ <b>WICKET!</b>\n"
-                            "<i>Over ends. New batter required.</i>\n\n"
-                            f"🧢 {captain_mention}, send the next batter:\n"
-                            "<code>/batting &lt;number&gt;</code>"
-                        ),
-                        parse_mode=ParseMode.HTML
-                    )
-
+            if is_last_ball_wicket:
+                match.update({"striker": match.get("non_striker"), "non_striker": None})
+                if has_client:
+                    await client.send_message(chat_id, "☝️ <b>WICKET!</b>\n<i>Over ends. Captain, send next batter (/batting Number).</i>", parse_mode=ParseMode.HTML)
                 from plugins.game.team.over_engine import end_over
                 await end_over(match)
                 return
 
-            if match.get("innings") == 2:
-                target = match.get("target")
-
-                if target and bat_team["runs"] >= target:
-                    match.update({
-                        "phase": "finished",
-                        "prompt_dispatched": False,
-                        "bowled": False,
-                        "batted": False,
-                        "striker": None,
-                        "non_striker": None
-                    })
-
-                    from plugins.game.team.over_engine import end_match
-                    await end_match(match)
-                    return
-
-                total_players = len(bat_team.get("players", []))
-                if bat_team["wickets"] >= total_players - 1:
-                    match.update({
-                        "phase": "finished",
-                        "prompt_dispatched": False,
-                        "bowled": False,
-                        "batted": False,
-                        "striker": None,
-                        "non_striker": None
-                    })
-
-                    from plugins.game.team.over_engine import end_match
-                    await end_match(match)
-                    return
-
-            all_players = match["teams"][bat_team_key]["players"]
-            available = [
-                u for u in all_players
-                if not match["players"].get(u, {}).get("is_out", False)
-                and u != match.get("non_striker")
-            ]
-
-            if not available:
-                match.update({
-                    "prompt_dispatched": False,
-                    "bowled": False,
-                    "batted": False,
-                    "last_bowl": None,
-                    "striker": None,
-                    "non_striker": None,
-                    "phase": "finished"
-                })
-
-                if has_client:
-                    all_out_lines = [
-                        "The stumps have had enough. Innings over.",
-                        "Nothing left in the tank. All out.",
-                        "Bowled, beaten, and finished.",
-                        "Complete collapse. That’s the innings.",
-                        "The bowlers ran riot. All out.",
-                        "Resistance ends here. Innings closed.",
-                        "No batters left to fight.",
-                        "That’s the end of the road for this side."
-                    ]
-
-                    await client.send_message(
-                        chat_id,
-                        f"☝️ <b>WICKET!</b>\n🚫 <b>ALL OUT!</b>\n\n"
-                        f"<i>{random.choice(all_out_lines)}</i>",
-                        parse_mode=ParseMode.HTML
-                    )
-
-                from plugins.game.team.over_engine import end_innings
-                await end_innings(match)
-                return
-
-            if not match.get("_wicket_on_last_ball"):
-                match.update({
-                    "bowled": False,
-                    "batted": False,
-                    "striker": None,
-                    "prompt_dispatched": False
-                })
-
-                await update_game_in_db(match)
-
-                if has_client:
-                    wicket_lines = [
-                        "That one had the batter’s name written on it.",
-                        "Timber! The stumps won that argument.",
-                        "Cleaned up. No VAR needed.",
-                        "Bowler wins. Batter rethinks life choices.",
-                        "That’s a long walk back… very long.",
-                        "Middle stump says hello 👋",
-                        "Outplayed. Outclassed. Out.",
-                        "The ball did the talking."
-                    ]
-
-                    bat_team_key = match.get("batting_team")
-                    captain_id = match.get("team_captains", {}).get(bat_team_key)
-
-                    if captain_id:
-                        captain_name = match.get("user_cache", {}).get(captain_id, "Captain")
-                        captain_mention = f"<a href='tg://user?id={captain_id}'>{captain_name}</a>"
-                    else:
-                        captain_mention = "<b>Batting Captain</b>"
-
-                    await client.send_message(
-                        chat_id,
-                        (
-                            "☝️ <b>WICKET!</b>\n"
-                            f"<i>{random.choice(wicket_lines)}</i>\n\n"
-                            f"🧢 {captain_mention}, send the next batter:"
-                            "/batting Number"
-                        ),
-                        parse_mode=ParseMode.HTML
-                    )
-
+            match.update({"striker": None})
+            if has_client:
+                await client.send_message(chat_id, "☝️ <b>WICKET!</b>\n<i>Cleaned up!</i>\n\n🧢 Captain, send next batter: /batting Number", parse_mode=ParseMode.HTML)
             return
 
         balls_in_over = len(match["current_over_balls"])
         max_overs = match.get("overs", 0)
 
         if balls_in_over >= 6:
-            match.pop("_rotate_next_ball", None)
-            match["prompt_dispatched"] = False
-            match["bowled"] = False
-            match["batted"] = False
-
-            last_ball_runs = match.pop("_last_ball_runs", None)
-            last_ball_wicket = match.pop("_last_ball_wicket", False)
-            wicket_on_last_ball = match.pop("_wicket_on_last_ball", False)
-
-            if last_ball_wicket and not wicket_on_last_ball:
+            last_ball_runs = match.pop("_last_ball_runs", 0)
+            
+            if isinstance(last_ball_runs, int) and last_ball_runs % 2 == 0:
                 if match.get("striker") and match.get("non_striker"):
-                    match["striker"], match["non_striker"] = (
-                        match["non_striker"],
-                        match["striker"]
-                    )
-
-            elif isinstance(last_ball_runs, int):
-                if last_ball_runs % 2 == 0:
-                    if match.get("striker") and match.get("non_striker"):
-                        match["striker"], match["non_striker"] = (
-                            match["non_striker"],
-                            match["striker"]
-                        )
-                else:
-                    pass
+                    match["striker"], match["non_striker"] = match["non_striker"], match["striker"]
 
             if match.get("current_over", 1) >= max_overs:
                 from plugins.game.team.over_engine import end_innings
@@ -645,45 +410,23 @@ async def advance_ball(match, result):
             else:
                 from plugins.game.team.over_engine import end_over
                 await end_over(match)
-
             return
-
-        match["bowled"] = False
-        match["batted"] = False
-        match["last_bowl"] = None
-        match["prompt_dispatched"] = False
-        match["phase"] = "LIVE"
 
         if match.pop("_rotate_next_ball", False):
             if match.get("striker") and match.get("non_striker"):
-                match["striker"], match["non_striker"] = (
-                    match["non_striker"],
-                    match["striker"]
-                )
+                match["striker"], match["non_striker"] = match["non_striker"], match["striker"]
 
         if has_client:
             try:
                 from plugins.utilities.achieve import evaluate_and_unlock_achievements
-
-                newly_unlocked = await evaluate_and_unlock_achievements(
-                    actual_striker,
-                    match
-                )
-
+                newly_unlocked = await evaluate_and_unlock_achievements(actual_striker, match)
                 for ach in newly_unlocked:
                     if should_announce_in_group(ach):
-                        await announce_achievement_group(
-                            client, chat_id, actual_striker, ach, match
-                        )
+                        await announce_achievement_group(client, chat_id, actual_striker, ach, match)
                     else:
-                        await announce_achievement_dm(
-                            client, actual_striker, ach
-                        )
-
+                        await announce_achievement_dm(client, actual_striker, ach)
             except Exception as e:
                 print("❌ Achievement check failed:", e)
-
-            await asyncio.sleep(0.2)
 
             from plugins.game.team.state import start_first_ball
             await start_first_ball(client, match)
