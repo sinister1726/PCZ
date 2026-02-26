@@ -2,7 +2,7 @@ import asyncio
 from pyrogram.enums import ParseMode
 from database.games import update_team_penalty, increment_user_penalty_count
 
-TIME_LIMIT = 90
+TIME_LIMIT = 60 
 
 def mention_user(match, user_id, fallback="Player"):
     name = match.get("user_cache", {}).get(user_id, fallback)
@@ -106,8 +106,8 @@ async def handle_timeout(match, role):
 
     if role == "batter":
         bat_team = match["teams"][team_key]
-
         bat_team["wickets"] += 1
+        
         if user_id in match["players"]:
             match["players"][user_id]["is_out"] = True
 
@@ -119,7 +119,7 @@ async def handle_timeout(match, role):
             if not match["players"].get(uid, {}).get("is_out", False)
         ]
 
-        if len(alive_batters) == 0:
+        if len(alive_batters) <= 1:
             await client.send_message(
                 chat_id,
                 penalty_msg + "🏁 <b>ALL OUT!</b>\nThe innings comes to an end.",
@@ -132,7 +132,6 @@ async def handle_timeout(match, role):
             else:
                 from plugins.game.team.over_engine import end_match
                 await end_match(match)
-
             return
 
         penalty_msg += (
@@ -167,3 +166,4 @@ async def handle_timeout(match, role):
                 task.cancel()
             except Exception:
                 pass
+                
