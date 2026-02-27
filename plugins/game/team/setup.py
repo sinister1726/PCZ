@@ -1,3 +1,5 @@
+import asyncio
+from utils.dbpass import safe_fetch
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.games import get_active_game
@@ -7,15 +9,13 @@ import random
 from pyrogram.enums import ParseMode
 from plugins.game.team import init_match
 from plugins.game.team import ACTIVE_MATCHES
-import asyncio
-from utils.mentions import mention_html  # 👈 helper
+from utils.mentions import mention_html 
 from html import escape
 from Assets.files import RUN_VIDEOS
 
 def safe_mention(user):
     name = escape(user.first_name or "Player")
     return f'<a href="tg://user?id={user.id}">{name}</a>'
-
 
 def sync_captain_flags(match, team):
     captain_id = match["teams"][team].get("captain_id")
@@ -591,7 +591,6 @@ async def set_batting(client, message):
         )
 
     if match.get("striker") and match.get("non_striker"):
-        # CASE A: Mid-innings Wicket Replacement
         if match.get("total_balls", 0) > 0:
             await message.reply_text(
                 f"🧢 <b>NEW BATTER IN!</b>\n"
@@ -629,11 +628,6 @@ async def set_batting(client, message):
                 ),
                 parse_mode=ParseMode.HTML
             )
-
-import asyncio
-from pyrogram import Client, filters
-from pyrogram.enums import ParseMode
-from utils.dbpass import safe_fetch
 
 @Client.on_message(filters.command("bowling") & filters.group)
 async def set_bowler(client, message):
