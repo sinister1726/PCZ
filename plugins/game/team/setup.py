@@ -732,7 +732,6 @@ async def set_bowler(client, message):
 
         await message.reply_text(f"⚾ <b>{bowler_user.first_name}</b> is ready to bowl.")
         from plugins.game.team.state import start_first_ball
-        # Reset prompt dispatched lock to allow the new bowler to trigger prompts
         match["prompt_dispatched"] = False
         asyncio.create_task(start_first_ball(client, match))
 
