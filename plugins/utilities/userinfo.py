@@ -259,11 +259,26 @@ async def build_rank_text(client, uid, category_key, offset=0):
 
     async with db.pool.acquire() as conn:
         if category_key == "best_captain":
-            query = "SELECT user_id, first_name, matches, (wins::float / NULLIF(matches, 0) * 100) as display_val FROM user_stats WHERE matches > 0 ORDER BY display_val DESC NULLS LAST, matches DESC LIMIT $1 OFFSET $2"
+            query = """
+                SELECT s.user_id, COALESCE(u.name, s.first_name, 'Player') as player_name, 
+                       s.matches, (s.wins::float / NULLIF(s.matches, 0) * 100) as display_val 
+                FROM user_stats s
+                LEFT JOIN users u ON s.user_id = u.user_id
+                WHERE s.matches > 0 
+                ORDER BY display_val DESC NULLS LAST, s.matches DESC 
+                LIMIT $1 OFFSET $2
+            """
             order_clause = "(wins::float / NULLIF(matches, 0)) DESC NULLS LAST"
             where_clause = "WHERE matches > 0"
         else:
-            query = f"SELECT user_id, first_name, matches, {db_column} as display_val FROM user_stats ORDER BY display_val DESC NULLS LAST LIMIT $1 OFFSET $2"
+            query = f"""
+                SELECT s.user_id, COALESCE(u.name, s.first_name, 'Player') as player_name, 
+                       s.matches, s.{db_column} as display_val 
+                FROM user_stats s
+                LEFT JOIN users u ON s.user_id = u.user_id
+                ORDER BY display_val DESC NULLS LAST 
+                LIMIT $1 OFFSET $2
+            """
             order_clause = f"{db_column} DESC NULLS LAST"
             where_clause = ""
 
@@ -279,13 +294,13 @@ async def build_rank_text(client, uid, category_key, offset=0):
         return text + "<i>No data yet.</i>", 0
 
     for i, row in enumerate(top_players, start=offset + 1):
-        p_name = row["first_name"] or "User"
+        p_name = row["player_name"] # Ab yahan se asli naam aayega!
         val = row["display_val"]
         formatted_val = f"{val:.1f}%" if category_key == "best_captain" else f"{int(val)}"
         text += f"{i}. <b>{p_name}</b> = <code>{formatted_val}</code> ({int(row['matches'])} matches)\n\n"
 
     return text, user_pos["total_count"] if user_pos else 0
-
+    
 def get_main_menu():
     btns, row = [], []
     for key, (label, _) in CATEGORIES.items():
