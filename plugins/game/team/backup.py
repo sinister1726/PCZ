@@ -2,45 +2,21 @@ import json
 import os
 import uuid
 from pyrogram import Client, filters
+from pyrogram.enums import ParseMode
 from plugins.game.team import ACTIVE_MATCHES
-from utils.permissions import host_only 
+from utils.permissions import host_only
 
-class MatchEncoder(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, set):
-            return list(obj)
-        if isinstance(obj, uuid.UUID):
-            return str(obj)
-        return str(obj)
-
-@Client.on_message(filters.command("savegame") & filters.group)
-@host_only
-async def save_game_cmd(client, message):
-    chat_id = message.chat.id
-    match = ACTIVE_MATCHES.get(chat_id)
-
-    if not match:
-        return await message.reply_text("⚠️ No active match running to save.")
-
-    safe_match = {}
-    for key, val in match.items():
-        if key in ["client", "timeouts"]: 
-            continue
-        safe_match[key] = val
-
-    file_name = f"match_save_{chat_id}.json"
-    with open(file_name, "w") as f:
-        json.dump(safe_match, f, indent=4, cls=MatchEncoder)
-
-    caption = (
-        "💾 **𝗠𝗔𝗧𝗖𝗛 𝗦𝗔𝗩𝗘𝗗 𝗦𝗨𝗖𝗖𝗘𝗦𝗦𝗙𝗨𝗟𝗟𝗬!**\n"
-        "──┈┄┄╌╌╌╌┄┄┈──\n"
-        "If the bot glitches or a wrong player steps in, "
-        "reply to this file with `/restore` to undo."
-    )
-    await message.reply_document(document=file_name, caption=caption)
-    
-    os.remove(file_name)
+def fix_json_keys(data):
+    if isinstance(data, dict):
+        new_dict = {}
+        for k, v in data.items():
+            new_key = int(k) if isinstance(k, str) and k.isdigit() else k
+            new_dict[new_key] = fix_json_keys(v)
+        return new_dict
+    elif isinstance(data, list):
+        return [fix_json_keys(i) for i in data]
+    else:
+        return data
 
 @Client.on_message(filters.command("restore") & filters.group)
 @host_only
@@ -53,14 +29,15 @@ async def restore_game_cmd(client, message):
         return await message.reply_text("⚠️ Invalid file! Only `.json` match files are supported.")
 
     chat_id = message.chat.id
-
     wait_msg = await message.reply_text("🔄 **Downloading and restoring match data...**")
 
     try:
         file_path = await message.reply_to_message.download()
         with open(file_path, "r") as f:
-            backup_data = json.load(f)
+            raw_data = json.load(f)
         os.remove(file_path)
+
+        backup_data = fix_json_keys(raw_data)
 
         backup_data["client"] = client
         backup_data["timeouts"] = {
@@ -75,14 +52,46 @@ async def restore_game_cmd(client, message):
         ACTIVE_MATCHES[chat_id] = backup_data
 
         await wait_msg.edit_text(
-            f"✅ **𝗠𝗔𝗧𝗖𝗛 𝗥𝗘𝗦𝗧𝗢𝗥𝗘𝗗!**\n"
+            f"✅ **𝗠𝗔𝗧𝗖𝗛 𝗥𝗘𝗦𝗧𝗢𝗥𝗘𝗗 𝗦𝗨𝗖𝗖𝗘𝗦𝗦𝗙𝗨𝗟𝗟𝗬!**\n"
             f"──┈┄┄╌╌╌╌┄┄┈──\n"
-            f"Game state loaded perfectly. \n"
-            f"Phase: **{backup_data.get('phase', 'LIVE')}**\n\n"
-            f"Batting Team Runs: **{backup_data.get('teams', {}).get(backup_data.get('batting_team', 'A'), {}).get('runs', 0)}**\n\n"
-            f"▶️ Use `/fixmatch` or send the next command to resume."
+            f"Phase: **{backup_data.get('phase', 'LIVE')}**\n"
+            f"Total Balls: **{backup_data.get('total_balls', 0)}**\n\n"
+            f"▶️ You can now resume playing. Bowler can send the next ball!"
         )
-
     except Exception as e:
-        await wait_msg.edit_text(f"❌ **Restoration Failed:** Data file is corrupted or incompatible.\nError: `{e}`")
-      
+        await wait_msg.edit_text(f"❌ **Restoration Failed:**\nError: `{e}`")
+
+@Client.on_message(filters.command(["change_side", "changeside"]) & filters.group)
+@host_only
+async def change_side_cmd(client, message):
+    chat_id = message.chat.id
+    match = ACTIVE_MATCHES.get(chat_id)
+
+    if not match or match.get("phase") != "LIVE":
+        return await message.reply_text("⚠️ No live match running right now!")
+
+    if match.get("total_balls", 0) > 0:
+        return await message.reply_text("⚠️ **Not Allowed!** You can only change sides BEFORE the first ball of the innings is bowled.")
+
+    striker = match.get("striker")
+    non_striker = match.get("non_striker")
+
+    if not striker or not non_striker:
+        return await message.reply_text("⚠️ Both opening batters must be on the pitch to change sides!")
+        
+    match["striker"], match["non_striker"] = non_striker, striker
+    
+    match["prompt_dispatched"] = False 
+
+    striker_name = match.get("user_cache", {}).get(match["striker"], "Batter 1")
+    non_striker_name = match.get("user_cache", {}).get(match["non_striker"], "Batter 2")
+
+    await message.reply_text(
+        f"🔄 **𝗦𝗜𝗗𝗘𝗦 𝗖𝗛𝗔𝗡𝗚𝗘𝗗 𝗦𝗨𝗖𝗖𝗘𝗦𝗦𝗙𝗨𝗟𝗟𝗬!** (Host Action)\n"
+        f"──┈┄┄╌╌╌╌┄┄┈──\n"
+        f"🏏 **On Strike:** <a href='tg://user?id={match['striker']}'>{striker_name}</a>\n"
+        f"🏃 **Non-Striker:** <a href='tg://user?id={match['non_striker']}'>{non_striker_name}</a>\n\n"
+        f"Ready for the first ball!",
+        parse_mode=ParseMode.HTML
+    )
+    
