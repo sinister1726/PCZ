@@ -2,7 +2,7 @@ from pyrogram import Client, filters
 from pyrogram.types import ChatMemberUpdated
 from pyrogram.enums import ParseMode, ChatMemberStatus
 
-LOG_GROUP_ID = -1001234567890 
+LOG_GROUP_ID = -1003692127639
 
 async def send_match_log(client, action_title, match, extra_text=""):
     """Function to send match-related logs to the bot's private group"""
