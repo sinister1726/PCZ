@@ -60,7 +60,7 @@ async def confirm_host(client, query):
             show_alert=True
         )
 
-    # Create game (returns game_id / UUID)
+    # Create game (returns UUID)
     game_id = await create_game(
         chat_id=chat_id,
         mode="team",
@@ -68,11 +68,12 @@ async def confirm_host(client, query):
         title=group_title
     )
 
-    # Build match object for logger
+    # Logger match object
     match = {
         "game_id": str(game_id),
         "chat_id": chat_id,
-        "host_name": user.mention
+        "host_id": user.id,
+        "host_name": user.first_name
     }
 
     # Send match start log
@@ -80,7 +81,7 @@ async def confirm_host(client, query):
         client,
         "🟢 MATCH STARTED",
         match,
-        "Match started in the group."
+        f"Match started in {group_title}."
     )
 
     # Update message
@@ -93,6 +94,7 @@ async def confirm_host(client, query):
         ),
         parse_mode=ParseMode.HTML
     )
+
 
 @Client.on_callback_query(filters.regex("^mode_cancel$"))
 async def cancel_game(client, query):
