@@ -5,6 +5,7 @@ from utils.permissions import admin_only
 from database.games import is_game_active, end_game as close_db_game
 from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.over_engine import end_match
+from plugins.utilities.logger import send_match_log
 
 @Client.on_message(filters.command("endgame") & filters.group)
 @admin_only
@@ -36,6 +37,8 @@ async def end_game_command(client, message):
 @admin_only
 async def confirm_endgame(client, query):
     chat_id = query.message.chat.id
+    group_title = query.message.chat.title or "Private Match"
+
     await query.answer("Force ending match…")
 
     match = ACTIVE_MATCHES.get(chat_id)
@@ -46,7 +49,7 @@ async def confirm_endgame(client, query):
     )
 
     if match:
-        match["client"] = client  
+        match["client"] = client
 
         balls_played = match.get("total_balls", 0)
         early_force_end = balls_played < 6
@@ -59,7 +62,23 @@ async def confirm_endgame(client, query):
                 "`Match stopped early. Player stats saved.`"
             )
 
+        # MATCH LOG
+        log_match = {
+            "game_id": str(match.get("game_id", "Unknown")),
+            "chat_id": chat_id,
+            "host_id": match.get("host_id"),
+            "host_name": match.get("host_name", "Unknown")
+        }
+
+        await send_match_log(
+            client,
+            "🛑 MATCH FORCE ENDED",
+            log_match,
+            f"Match was force ended by admin in {group_title}."
+        )
+
     await close_db_game(chat_id)
+
     await query.message.edit_text(end_text)
 
 @Client.on_callback_query(filters.regex("^cancel_endgame$"))
