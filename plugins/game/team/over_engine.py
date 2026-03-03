@@ -816,10 +816,11 @@ Give 4–5 lines:
 async def end_match(match, forced: bool = False):
     import asyncio
     import httpx
+    from utils.logger import send_match_log
 
     client = match.get("client")
     chat_id = match.get("chat_id")
-    LOG_GC_ID = -1003527724170
+    LOG_GC_ID = -1003692127639
 
     balls_played = match.get("total_balls", 0)
     early_force_end = forced and balls_played < 6
@@ -865,6 +866,23 @@ async def end_match(match, forced: bool = False):
         asyncio.create_task(save_match_stats(match, winner_key))
     except Exception as e:
         print("Stats Save Error:", e)
+
+    try:
+        log_match = {
+            "game_id": str(match.get("game_id")),
+            "chat_id": chat_id,
+            "host_id": match.get("host_id"),
+            "host_name": match.get("host_name", "Unknown")
+        }
+
+        await send_match_log(
+            client,
+            "🏁 MATCH COMPLETED",
+            log_match,
+            "Match completed and stats saved."
+        )
+    except Exception as e:
+        print("Logger Error:", e)
 
     from plugins.game.team import ACTIVE_MATCHES
     ACTIVE_MATCHES.pop(chat_id, None)
