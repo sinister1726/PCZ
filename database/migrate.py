@@ -9,12 +9,24 @@ async def migrate():
         await conn.execute("CREATE TABLE IF NOT EXISTS achievement_meta (key TEXT PRIMARY KEY, value INT NOT NULL);")
         await conn.execute("INSERT INTO achievement_meta (key, value) VALUES ('generation_count', 0) ON CONFLICT DO NOTHING;")
         await conn.execute("CREATE TABLE IF NOT EXISTS mods (user_id BIGINT PRIMARY KEY, tier INT NOT NULL DEFAULT 1, added_by BIGINT, added_at TIMESTAMP DEFAULT NOW());")
-        
+
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS gbans (
+            user_id BIGINT PRIMARY KEY,
+            reason TEXT,
+            banned_by BIGINT,
+            banned_at TIMESTAMP DEFAULT NOW(),
+            expire_at TIMESTAMP
+        );
+        """)
+
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_gbans_user ON gbans(user_id);")
+
         await conn.execute("CREATE TABLE IF NOT EXISTS games (game_id UUID PRIMARY KEY, chat_id BIGINT, title TEXT, mode TEXT, host_id BIGINT, phase TEXT DEFAULT 'waiting', status TEXT, winner TEXT, team_a_runs INT DEFAULT 0, team_b_runs INT DEFAULT 0, team_a_wickets INT DEFAULT 0, team_b_wickets INT DEFAULT 0, team_a_balls INT DEFAULT 0, team_b_balls INT DEFAULT 0, team_a_penalty INT DEFAULT 0, team_b_penalty INT DEFAULT 0, target INT, innings INT DEFAULT 1, motm BIGINT, toss_winner BIGINT, batting_team CHAR(1), bowling_team CHAR(1), overs INT DEFAULT 0, created_at TIMESTAMP DEFAULT NOW());")
         await conn.execute("CREATE TABLE IF NOT EXISTS game_players (id SERIAL PRIMARY KEY, game_id UUID REFERENCES games(game_id) ON DELETE CASCADE, user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE, team CHAR(1), is_out BOOLEAN DEFAULT FALSE, is_captain BOOLEAN DEFAULT FALSE, role TEXT, joined_at TIMESTAMP DEFAULT NOW());")
         await conn.execute("CREATE TABLE IF NOT EXISTS team_shifts (game_id UUID REFERENCES games(game_id) ON DELETE CASCADE, user_id BIGINT REFERENCES users(user_id) ON DELETE CASCADE, shifts INT DEFAULT 0, PRIMARY KEY (game_id, user_id));")
         await conn.execute("CREATE TABLE IF NOT EXISTS user_stats (user_id BIGINT PRIMARY KEY, username TEXT, first_name TEXT, matches INT DEFAULT 0, wins INT DEFAULT 0, losses INT DEFAULT 0, runs INT DEFAULT 0, balls_faced INT DEFAULT 0, highest_score INT DEFAULT 0, fours INT DEFAULT 0, sixes INT DEFAULT 0, centuries INT DEFAULT 0, fifties INT DEFAULT 0, ducks INT DEFAULT 0, wickets INT DEFAULT 0, balls_bowled INT DEFAULT 0, runs_conceded INT DEFAULT 0, hat_tricks INT DEFAULT 0, moms INT DEFAULT 0, best_partnership INT DEFAULT 0, penalties_received INT DEFAULT 0, created_at TIMESTAMP DEFAULT NOW());")
-        
+
         await conn.execute("CREATE TABLE IF NOT EXISTS achievements (id SERIAL PRIMARY KEY, code TEXT UNIQUE, title TEXT, description TEXT, condition JSONB, rarity TEXT, is_dynamic BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT NOW());")
         await conn.execute("CREATE TABLE IF NOT EXISTS user_achievements (user_id BIGINT, achievement_id INT REFERENCES achievements(id) ON DELETE CASCADE, unlocked_at TIMESTAMP DEFAULT NOW(), PRIMARY KEY (user_id, achievement_id));")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id);")
@@ -55,4 +67,3 @@ async def migrate():
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_players_game ON game_players(game_id);")
 
         print("✅ Database migration complete. All tables and career milestones are ready.")
-        
