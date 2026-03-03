@@ -37,18 +37,16 @@ async def team_mode_selected(client, query):
         ),
         reply_markup=buttons
     )
+
 @Client.on_callback_query(filters.regex("^host_select$"))
 async def confirm_host(client, query):
     user = query.from_user
-    chat = query.message.chat
-    chat_id = chat.id
-    group_title = chat.title or "Private Match"
-
-    # Fast answer (prevents loading lag)
-    await query.answer()
+    chat_id = query.message.chat.id
+    group_title = query.message.chat.title or "Private Match"
 
     # Check if game already active
-    if await get_active_game(chat_id):
+    existing = await get_active_game(chat_id)
+    if existing:
         return await query.answer(
             "👑 Host already chosen.\nEnjoy the game 😌",
             show_alert=True
@@ -62,7 +60,7 @@ async def confirm_host(client, query):
             show_alert=True
         )
 
-    # Create game
+    # Create game (returns UUID)
     game_id = await create_game(
         chat_id=chat_id,
         mode="team",
@@ -70,34 +68,33 @@ async def confirm_host(client, query):
         title=group_title
     )
 
-    short_id = str(game_id)[:8]
+    # Logger match object
+    match = {
+        "game_id": str(game_id),
+        "chat_id": chat_id,
+        "host_id": user.id,
+        "host_name": user.first_name
+    }
 
-    # Send log (non blocking)
-    client.loop.create_task(
-        send_match_log(
-            client,
-            "🟢 MATCH STARTED",
-            {
-                "game_id": short_id,
-                "chat_id": chat_id,
-                "host_id": user.id,
-                "host_name": user.first_name
-            },
-            f"Match started in {group_title}."
-        )
+    # Send match start log
+    await send_match_log(
+        client,
+        "🟢 MATCH STARTED",
+        match,
+        f"Match started in {group_title}."
     )
 
-    # Edit message
+    # Update message
     await query.message.edit_caption(
         caption=(
             "👑 <b>HOST CONFIRMED</b>\n\n"
-            f"👤 Host: <a href='tg://user?id={user.id}'>{user.first_name}</a>\n"
-            f"🏟 Venue: {group_title}\n"
-            f"🆔 Match ID: <code>{short_id}</code>\n\n"
+            f"👤 Host: {mention_html(user)}\n"
+            f"🏟 Venue: {group_title}\n\n"
             "➡️ Use /create_teams to continue"
         ),
         parse_mode=ParseMode.HTML
     )
+)
 
 @Client.on_callback_query(filters.regex("^mode_cancel$"))
 async def cancel_game(client, query):
