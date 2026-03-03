@@ -11,7 +11,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import ChatAdminRequired
 
 from PIL import Image, ImageDraw, ImageFont
-
+from plugins.moderation.bans import banned_check
 from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.state import GROUP_COOLDOWN
 
@@ -231,6 +231,7 @@ async def rejoin_timer(client, chat_id):
         pass
 
 @Client.on_message(filters.command(["join_teamA", "join_teamB"]) & filters.group)
+@banned_check
 async def join_team_logic(client, message):
     chat_id = message.chat.id
     user = message.from_user
@@ -512,7 +513,6 @@ async def test_members_thumbnail(client, message):
         caption=("🧪 **MEMBERS THUMBNAIL TEST**\n"f"👑 Captain A: {cap_a.first_name}\n"f"👑 Captain B: {cap_b.first_name}\n\n_This is a test render only_"),
         parse_mode=ParseMode.MARKDOWN
     )
-
 @Client.on_message(filters.command("add") & filters.group)
 @host_only
 async def add_player(client, message):
@@ -523,16 +523,24 @@ async def add_player(client, message):
     match = ACTIVE_MATCHES.get(chat_id)
 
     if not game or not match:
-        return await message.reply_text("😴 No match running here.\nStart one first and then we’ll add players 🔥")
+        return await message.reply_text(
+            "😴 No match running here.\nStart one first and then we’ll add players 🔥"
+        )
 
     if len(args) < 2 or args[1].upper() not in ("A", "B"):
-        return await message.reply_text("🤔 That didn’t look right.\n\n👉 Use it like this:\n<code>/add A</code> or <code>/add B</code>\n↪ Reply to a user or mention them", parse_mode=ParseMode.HTML)
+        return await message.reply_text(
+            "🤔 That didn’t look right.\n\n👉 Use it like this:\n"
+            "<code>/add A</code> or <code>/add B</code>\n"
+            "↪ Reply to a user or mention them",
+            parse_mode=ParseMode.HTML
+        )
 
     team = args[1].upper()
     game_id = game["game_id"]
     targets = []
 
-    if message.reply_to_message: targets.append(message.reply_to_message.from_user)
+    if message.reply_to_message:
+        targets.append(message.reply_to_message.from_user)
 
     if len(args) == 3:
         raw_users = args[2].replace("\n", " ").split()
@@ -543,7 +551,10 @@ async def add_player(client, message):
             except Exception:
                 targets.append(raw)
 
-    if not targets: return await message.reply_text("👀 I see no players here.\nReply to someone or mention them properly.")
+    if not targets:
+        return await message.reply_text(
+            "👀 I see no players here.\nReply to someone or mention them properly."
+        )
 
     success_list = []
     failed_details = []
@@ -551,48 +562,103 @@ async def add_player(client, message):
     async with db.pool.acquire() as conn:
         for target in targets:
             try:
+
                 if isinstance(target, str):
                     failed_details.append(f"• <code>{target}</code> — invalid user")
                     continue
 
+                # 🚫 BAN CHECK
+                banned = await conn.fetchrow(
+                    "SELECT reason FROM user_bans WHERE user_id=$1",
+                    target.id
+                )
+
+                if banned:
+                    reason = banned["reason"] or "No reason"
+                    failed_details.append(
+                        f"• {target.first_name} — 🚫 banned ({reason})"
+                    )
+                    continue
+
+                # Check if user already in another match
                 other = await user_in_other_game(target.id, chat_id)
                 if other:
-                    failed_details.append(f"• {target.first_name} — already in another match")
+                    failed_details.append(
+                        f"• {target.first_name} — already in another match"
+                    )
                     continue
 
-                exists = await conn.fetchval("SELECT 1 FROM game_players WHERE game_id=$1 AND user_id=$2", game_id, target.id)
+                # Check if already added
+                exists = await conn.fetchval(
+                    "SELECT 1 FROM game_players WHERE game_id=$1 AND user_id=$2",
+                    game_id,
+                    target.id
+                )
+
                 if exists:
-                    failed_details.append(f"• {target.first_name} — already added")
+                    failed_details.append(
+                        f"• {target.first_name} — already added"
+                    )
                     continue
 
+                # Ensure user exists
                 await ensure_user_exists(conn, target)
-                await conn.execute("INSERT INTO game_players (game_id, user_id, team) VALUES ($1, $2, $3)", game_id, target.id, team)
 
-                if target.id not in match["teams"][team]["players"]: match["teams"][team]["players"].append(target.id)
+                # Insert player
+                await conn.execute(
+                    "INSERT INTO game_players (game_id, user_id, team) VALUES ($1, $2, $3)",
+                    game_id,
+                    target.id,
+                    team
+                )
+
+                # Update memory
+                if target.id not in match["teams"][team]["players"]:
+                    match["teams"][team]["players"].append(target.id)
 
                 match["players"].setdefault(target.id, {
-                    "runs": 0, "balls_faced": 0, "wickets": 0, "runs_conceded": 0, "balls_bowled": 0,
-                    "bowling_balls": [], "team": team, "is_out": False, "sixes_count": 0, "fours_count": 0,
+                    "runs": 0,
+                    "balls_faced": 0,
+                    "wickets": 0,
+                    "runs_conceded": 0,
+                    "balls_bowled": 0,
+                    "bowling_balls": [],
+                    "team": team,
+                    "is_out": False,
+                    "sixes_count": 0,
+                    "fours_count": 0,
                     "late_join": True if match.get("started") else False
                 })
 
                 match["user_cache"][target.id] = target.first_name or "Player"
+
                 success_list.append(target.mention)
 
             except Exception as e:
                 print("ADD PLAYER ERROR:", e)
-                failed_details.append(f"• {target.first_name if hasattr(target, 'first_name') else target} — failed")
-                
+                failed_details.append(
+                    f"• {target.first_name if hasattr(target, 'first_name') else target} — failed"
+                )
+
     if len(success_list) == 1 and len(targets) == 1:
-        return await message.reply_text(f"✅ {success_list[0]} added to <b>Team {team}</b>.\nAll set. Let’s play 🏏", parse_mode=ParseMode.HTML)
+        return await message.reply_text(
+            f"✅ {success_list[0]} added to <b>Team {team}</b>.\nAll set. Let’s play 🏏",
+            parse_mode=ParseMode.HTML
+        )
 
     res = f"{'🌊' if team == 'A' else '🔥'} <b>Team {team} Update</b>\n────────────\n"
+
     if success_list:
         res += "✅ <b>Added</b>\n" + "\n".join([f"• {p}" for p in success_list]) + "\n\n"
+
     if failed_details:
         res += "⚠️ <b>Skipped</b>\n" + "\n".join(failed_details) + "\n"
 
-    await message.reply_text(res, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    await message.reply_text(
+        res,
+        parse_mode=ParseMode.HTML,
+        disable_web_page_preview=True
+    )
 
 @Client.on_message(filters.command("remove") & filters.group)
 @host_only
