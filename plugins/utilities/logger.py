@@ -6,26 +6,30 @@ LOG_GROUP_ID = -1003692127639
 
 
 async def send_match_log(client, action_title, match, extra_text=""):
-    """Function to send match-related logs to the bot's private group"""
     if not LOG_GROUP_ID:
         return
 
-    # Handle if match is UUID or dict
-    if isinstance(match, dict):
-        game_id = match.get("game_id", "Unknown")
-        chat_id = match.get("chat_id", "Unknown")
-        host_name = match.get("host_name", "Unknown")
+    game_id = match.get("game_id", "Unknown")
+    chat_id = match.get("chat_id", "Unknown")
+    host_id = match.get("host_id")
+    host_name = match.get("host_name", "Unknown")
+
+    # Short Match ID
+    if game_id != "Unknown":
+        game_id = str(game_id)[:8]
+
+    # Proper mention
+    if host_id:
+        host_mention = f"<a href='tg://user?id={host_id}'>{host_name}</a>"
     else:
-        game_id = match
-        chat_id = "Unknown"
-        host_name = "Unknown"
+        host_mention = host_name
 
     text = (
-        f"📝 **{action_title}**\n"
+        f"📝 <b>{action_title}</b>\n"
         f"──┈┄┄╌╌╌╌┄┄┈──\n"
-        f"🆔 **Match ID:** `{game_id}`\n"
-        f"👤 **Host:** {host_name}\n"
-        f"💬 **Group ID:** `{chat_id}`\n\n"
+        f"🆔 <b>Match ID:</b> <code>{game_id}</code>\n"
+        f"👤 <b>Host:</b> {host_mention}\n"
+        f"💬 <b>Group ID:</b> <code>{chat_id}</code>\n\n"
         f"{extra_text}"
     )
 
@@ -33,10 +37,10 @@ async def send_match_log(client, action_title, match, extra_text=""):
         await client.send_message(
             chat_id=LOG_GROUP_ID,
             text=text,
-            parse_mode=ParseMode.MARKDOWN
+            parse_mode=ParseMode.HTML
         )
     except Exception as e:
-        print(f"❌ Error while sending match log: {e}")
+        print(f"Log Error: {e}")
 
 @Client.on_chat_member_updated()
 async def bot_tracking_log(client, update: ChatMemberUpdated):
