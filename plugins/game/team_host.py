@@ -6,6 +6,7 @@ from Assets.files import TEAM_CREATE_IMAGE
 from database.games import get_active_game, create_game, user_in_other_game
 from utils.mentions import mention_html
 from plugins.utilities.logger import send_match_log
+
 @Client.on_callback_query(filters.regex("^mode_team$"))
 async def team_mode_selected(client, query):
     await query.answer()
@@ -38,22 +39,19 @@ async def team_mode_selected(client, query):
         reply_markup=buttons
     )
 
-
 @Client.on_callback_query(filters.regex("^host_select$"))
 async def confirm_host(client, query):
     user = query.from_user
     chat_id = query.message.chat.id
     group_title = query.message.chat.title or "Private Match"
 
-    # Check if game already active
     existing = await get_active_game(chat_id)
     if existing:
         return await query.answer(
             "👑 Host already chosen.\nEnjoy the game 😌",
             show_alert=True
         )
-
-    # Check if user already in another game
+        
     other_game = await user_in_other_game(user.id, chat_id)
     if other_game:
         return await query.answer(
@@ -61,7 +59,6 @@ async def confirm_host(client, query):
             show_alert=True
         )
 
-    # Create game (returns UUID)
     game_id = await create_game(
         chat_id=chat_id,
         mode="team",
@@ -69,7 +66,6 @@ async def confirm_host(client, query):
         title=group_title
     )
 
-    # Logger match object
     match = {
         "game_id": str(game_id),
         "chat_id": chat_id,
@@ -77,7 +73,6 @@ async def confirm_host(client, query):
         "host_name": user.first_name
     }
 
-    # Send match start log
     await send_match_log(
         client,
         "🟢 MATCH STARTED",
@@ -85,7 +80,6 @@ async def confirm_host(client, query):
         f"Match started in {group_title}."
     )
 
-    # Update message
     await query.message.edit_caption(
         caption=(
             "👑 <b>HOST CONFIRMED</b>\n\n"
