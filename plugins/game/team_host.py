@@ -6,7 +6,7 @@ from Assets.files import TEAM_CREATE_IMAGE
 from database.games import get_active_game, create_game, user_in_other_game
 from utils.mentions import mention_html
 from plugins.utilities.logger import send_match_log
-
+from plugins.moderation.bans import banned_check
 @Client.on_callback_query(filters.regex("^mode_team$"))
 async def team_mode_selected(client, query):
     await query.answer()
@@ -40,6 +40,7 @@ async def team_mode_selected(client, query):
     )
 
 @Client.on_callback_query(filters.regex("^host_select$"))
+@banned_check
 async def confirm_host(client, query):
     user = query.from_user
     chat_id = query.message.chat.id
