@@ -51,6 +51,14 @@ async def confirm_endgame(client, query):
     if match:
         match["client"] = client
 
+        # Save log data BEFORE ending match
+        log_match = {
+            "game_id": str(match.get("game_id", "Unknown")),
+            "chat_id": chat_id,
+            "host_id": match.get("host_id"),
+            "host_name": match.get("host_name", "Unknown")
+        }
+
         balls_played = match.get("total_balls", 0)
         early_force_end = balls_played < 6
 
@@ -62,14 +70,7 @@ async def confirm_endgame(client, query):
                 "`Match stopped early. Player stats saved.`"
             )
 
-        # MATCH LOG
-        log_match = {
-            "game_id": str(match.get("game_id", "Unknown")),
-            "chat_id": chat_id,
-            "host_id": match.get("host_id"),
-            "host_name": match.get("host_name", "Unknown")
-        }
-
+        # SEND LOG
         await send_match_log(
             client,
             "🛑 MATCH FORCE ENDED",
@@ -80,7 +81,7 @@ async def confirm_endgame(client, query):
     await close_db_game(chat_id)
 
     await query.message.edit_text(end_text)
-
+    
 @Client.on_callback_query(filters.regex("^cancel_endgame$"))
 @admin_only
 async def cancel_endgame(client, query):
