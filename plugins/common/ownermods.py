@@ -362,7 +362,7 @@ async def leave_cmd(client, message):
             "Thanks for having me around — it was fun while it lasted.\n\n"
             "If you feel this wasn’t meant to happen or something felt off,\n"
             "no worries at all 🤍 just reach out to the admins here:\n\n"
-            "🎮 𝗣𝗹𝗮𝘆 𝗭𝗼𝗻𝗲 → https://t.me/+k_za3lVumag2NDgx"
+            "🎮 𝗣𝗹𝗮𝘆 𝗭𝗼𝗻𝗲 → https://t.me/CLG_fun_zone"
             "Take care & keep the vibes alive 🏏✨",
             parse_mode=ParseMode.HTML
         )
