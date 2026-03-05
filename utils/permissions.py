@@ -1,9 +1,10 @@
 from functools import wraps
-from pyrogram.enums import ChatMemberStatus, ChatType
+from pyrogram.enums import ChatMemberStatus, ChatType, ParseMode
 from pyrogram.types import Message, CallbackQuery
 from config import Config
 from database.games import get_active_game
 from plugins.game.team import ACTIVE_MATCHES
+from database.restrictions import get_restriction_reason
 
 def admin_only(func):
     @wraps(func)
@@ -71,5 +72,30 @@ def host_only(func):
 
         return await func(client, message, *args, **kwargs)
 
+    return wrapper
+
+def not_restricted(func):
+    @wraps(func)
+    async def wrapper(client, message, *args, **kwargs):
+        user = message.from_user
+        if not user:
+            return await func(client, message, *args, **kwargs)
+
+        reason = await get_restriction_reason(user.id)
+        if reason:
+            text = (
+                f"🚫 **𝗔𝗖𝗖𝗘𝗦𝗦 𝗗𝗘𝗡𝗜𝗘𝗗**\n"
+                f"──┈┄┄╌╌╌╌┄┄┈──\n"
+                f"You have been restricted from using the Cricket bot.\n\n"
+                f"📌 **Reason:** `{reason}`\n\n"
+                f"Only the Owner or Mods can remove this restriction."
+            )
+            
+            if hasattr(message, "data"):
+                return await message.answer(f"🚫 Restricted: {reason}", show_alert=True)
+            else:
+                return await message.reply_text(text, parse_mode=ParseMode.MARKDOWN)
+
+        return await func(client, message, *args, **kwargs)
     return wrapper
     
