@@ -1,6 +1,7 @@
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto, Message
 from pyrogram.enums import ParseMode
+from pyrogram.errors import MessageNotModified 
 from Assets.files import START_IMAGE_GROUP, SOLO_MODE_IMAGE
 from database.games import is_game_active
 
@@ -40,16 +41,19 @@ async def start_game(client, message):
 async def solo_mode(client, query):
     await query.answer("Solo mode is currently under development.")
 
-    await query.message.edit_media(
-        media=InputMediaPhoto(
-            media=SOLO_MODE_IMAGE,
-            caption=(
-                "👤 **𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘**\n"
-                "`Coming soon in the next update!`"
-            )
-        ),
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="mode_back")]])
-    )
+    try:
+        await query.message.edit_media(
+            media=InputMediaPhoto(
+                media=SOLO_MODE_IMAGE,
+                caption=(
+                    "👤 **𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘**\n"
+                    "`Coming soon in the next update!`"
+                )
+            ),
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="mode_back")]])
+        )
+    except MessageNotModified:
+        pass 
 
 @Client.on_callback_query(filters.regex("^mode_cancel$"))
 async def cancel_start(client, query):
@@ -58,6 +62,8 @@ async def cancel_start(client, query):
 
 @Client.on_callback_query(filters.regex("^mode_back$"))
 async def back_to_start(client, query):
+    await query.answer() 
+    
     buttons = InlineKeyboardMarkup(
         [
             [
@@ -69,11 +75,14 @@ async def back_to_start(client, query):
             ]
         ]
     )
-    await query.message.edit_media(
-        media=InputMediaPhoto(
-            media=START_IMAGE_GROUP,
-            caption="🎮 **𝗦𝗘𝗟𝗘𝗖𝗧 𝗠𝗢𝗗𝗘**\n`Choose how to play.`"
-        ),
-        reply_markup=buttons
-    )
-    
+
+    try:
+        await query.message.edit_media(
+            media=InputMediaPhoto(
+                media=START_IMAGE_GROUP,
+                caption="🎮 **𝗦𝗘𝗟𝗘𝗖𝗧 𝗠𝗢𝗗𝗘**\n`Choose how to play.`"
+            ),
+            reply_markup=buttons
+        )
+    except MessageNotModified:
+        pass
