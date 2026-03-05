@@ -451,6 +451,8 @@ async def advance_ball(match, result):
             except Exception as e:
                 print("❌ Achievement check failed:", e)
 
+            match["prompt_dispatched"] = False
+
             from plugins.game.team.state import start_first_ball
             await start_first_ball(client, match)
 
