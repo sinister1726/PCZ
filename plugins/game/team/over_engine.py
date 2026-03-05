@@ -27,7 +27,7 @@ def get_mention(match, user_id):
 import random
 
 def _mention(user_id, match):
-    name = match.get("user_cache", {}).get(user_id, "Player" 
+    name = match.get("user_cache", {}).get(user_id, "Player")
     safe_player_name = escape(name) 
     return f"<a href='tg://user?id={user_id}'>{safe_player_name}</a>"
 
