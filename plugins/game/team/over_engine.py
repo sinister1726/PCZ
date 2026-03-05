@@ -917,65 +917,8 @@ async def end_match(match, forced: bool = False):
 
     print(f"✅ Match {match.get('game_id')} cleanup done")
 
-    async def post_match_extras():
+   async def post_match_extras():
         try:
-            if not early_force_end and winner_key in ("A", "B"):
-                players = match.get("players", {})
-                winning_players = teams[winner_key].get("players", [])
-
-                best_id, best_score = None, -1
-                for uid in winning_players:
-                    p = players.get(uid, {})
-                    score = p.get("runs", 0) + (p.get("wickets", 0) * 25)
-                    if score > best_score:
-                        best_score = score
-                        best_id = uid
-
-                if best_id:
-                    p = players[best_id]
-                    name = match.get("user_cache", {}).get(best_id, "Player")
-
-                    prompt = f"Player: {name}\nRuns: {p.get('runs',0)}\nWickets: {p.get('wickets',0)}\nGive a short 2–3 line cricket analysis."
-
-                    payload = {
-                        "model": "meta/llama-3.1-70b-instruct",
-                        "messages": [
-                            {"role": "system", "content": "You analyze cricket matches briefly."},
-                            {"role": "user", "content": prompt}
-                        ],
-                        "temperature": 0.7,
-                        "max_tokens": 80
-                    }
-
-                    headers = {
-                        "Authorization": f"Bearer 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",
-                        "Content-Type": "application/json"
-                    }
-
-                    analysis = ""
-                    try:
-                        async with httpx.AsyncClient(timeout=8) as ai:
-                            r = await ai.post("https://integrate.api.nvidia.com/v1/chat/completions", json=payload, headers=headers)
-                            analysis = r.json()["choices"][0]["message"]["content"]
-                    except Exception:
-                        analysis = "Clutch performance when it mattered most."
-
-                    potm_text = (
-                        "🏅 𝗣𝗟𝗔𝗬𝗘𝗥 𝗢𝗙 𝗧𝗛𝗘 𝗠𝗔𝗧𝗖𝗛\n"
-                        "──────────────\n"
-                        f"👤 {name}\n"
-                        f"🏏 Runs: {p.get('runs',0)}\n"
-                        f"🎯 Wickets: {p.get('wickets',0)}\n\n"
-                        f"🧠 {analysis}"
-                    )
-
-                    await client.send_message(chat_id, potm_text)
-                    
-                    try:
-                        await client.send_message(LOG_GC_ID, potm_text)
-                    except:
-                        pass
-
             from plugins.game.team.summaries import build_match_summary
             summary_text = await build_match_summary(client, match, winner_key)
 
