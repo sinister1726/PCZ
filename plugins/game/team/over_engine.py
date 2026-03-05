@@ -21,13 +21,15 @@ def safe_name(name: str) -> str:
 
 def get_mention(match, user_id):
     name = match.get("user_cache", {}).get(user_id, "Player")
-    return f'<a href="tg://user?id={user_id}">{name}</a>'
+    safe_player_name = escape(name) 
+    return f'<a href="tg://user?id={user_id}">{safe_player_name}</a>'
 
 import random
 
 def _mention(user_id, match):
-    name = match.get("user_cache", {}).get(user_id, "Player")
-    return f"<a href='tg://user?id={user_id}'>{name}</a>"
+    name = match.get("user_cache", {}).get(user_id, "Player" 
+    safe_player_name = escape(name) 
+    return f"<a href='tg://user?id={user_id}'>{safe_player_name}</a>"
 
 BATTER_LINES = {
     50: [
