@@ -178,7 +178,7 @@ async def start_first_ball(client, match):
         start_timer(match, "bowler")
     )
 
-@Client.on_message(filters.private & filters.regex("^[1-6]$"), group=1)
+@Client.on_message(filters.private & filters.regex("^[1-6]$"), group=-1)
 async def bowler_dm_handler(client, message):
     uid = message.from_user.id
 
@@ -247,7 +247,7 @@ async def bowler_dm_handler(client, message):
         start_timer(match, "batter")
     )
 
-@Client.on_message(filters.group & filters.regex("^[0-6]$"), group=1)
+@Client.on_message(filters.group & filters.regex("^[0-6]$"), group=-1)
 async def batter_handler(client, message):
     uid = message.from_user.id
     chat_id = message.chat.id
