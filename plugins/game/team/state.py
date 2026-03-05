@@ -236,7 +236,6 @@ async def bowler_dm_handler(client, message):
 
     striker_id = match.get("striker")
     
-    # Escaping striker's name to avoid HTML issues
     raw_striker_name = match.get("user_cache", {}).get(striker_id, "Batter")
     striker_name = html.escape(raw_striker_name)
 
@@ -328,10 +327,7 @@ async def batter_handler(client, message):
             f"🎯 {bowler_mention} is on fire 🔥"
         )
 
-        asyncio.create_task(
-            try_send_video(client, chat_id, "Out", caption)
-        )
-
+        await try_send_video(client, chat_id, "Out", caption)
         await advance_ball(match, "W")
 
     else:
@@ -350,10 +346,7 @@ async def batter_handler(client, message):
             f"╰⊚ {random.choice(comms_list[runs])}"
         )
 
-        asyncio.create_task(
-            try_send_video(client, chat_id, str(runs), caption)
-        )
-
+        await try_send_video(client, chat_id, str(runs), caption)
         await advance_ball(match, runs)
 
 @Client.on_message(filters.command(["score", "userinfo", "graph"]) & filters.group, group=-1)
