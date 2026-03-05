@@ -25,6 +25,8 @@ from database.games import (
     increment_shift,
 )
 
+from utils.permissions import host_only, not_restricted
+
 from Assets.files import MEMBERS_IMAGE
 
 from utils.permissions import host_only
@@ -104,6 +106,7 @@ async def get_fast_avatar(client, user_id):
 
 @Client.on_message(filters.command("create_teams") & filters.group)
 @host_only
+@not_restricted
 async def create_teams(client, message):
     chat_id = message.chat.id
     user = message.from_user
@@ -189,6 +192,7 @@ async def team_b_timer(client, chat_id):
 
 @Client.on_message(filters.command("rejointeams") & filters.group)
 @host_only
+@not_restricted
 async def rejoin_teams(client, message):
     chat_id = message.chat.id
     match = ACTIVE_MATCHES.get(chat_id)
@@ -230,6 +234,7 @@ async def rejoin_timer(client, chat_id):
         pass
 
 @Client.on_message(filters.command(["join_teamA", "join_teamB"]) & filters.group)
+@not_restricted
 async def join_team_logic(client, message):
     chat_id = message.chat.id
     user = message.from_user
