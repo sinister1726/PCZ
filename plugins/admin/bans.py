@@ -1,8 +1,12 @@
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 import html
-from database.restrictions import restrict_user, unrestrict_user
+from database.restrictions import restrict_user, unrestrict_user, get_all_restricted_users
 from config import Config 
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+USERS_PER_PAGE = 10
+
 
 @Client.on_message(filters.command("restrict") & filters.user(list(Config.OWNER_IDS)))
 async def restrict_cmd(client, message):
@@ -92,3 +96,108 @@ async def unrestrict_cmd(client, message):
         f"✅ <b>{safe_name}</b> (<code>{target_user.id}</code>) is now free to play and host matches again!",
         parse_mode=ParseMode.HTML
     )
+
+@Client.on_message(filters.command("restricted") & filters.user(list(Config.OWNER_IDS)))
+async def restricted_users_cmd(client, message):
+
+    users = await get_all_restricted_users()
+
+    if not users:
+        return await message.reply_text(
+            "✅ <b>No restricted users found.</b>",
+            parse_mode=ParseMode.HTML
+        )
+
+    await send_restricted_page(client, message, users, 0)
+
+
+async def send_restricted_page(client, message, users, page):
+
+    start = page * USERS_PER_PAGE
+    end = start + USERS_PER_PAGE
+    chunk = users[start:end]
+
+    text = "<b>⛔ Restricted Users</b>\n\n"
+
+    for i, user in enumerate(chunk, start=start + 1):
+
+        user_id = user["user_id"]
+        reason = html.escape(user["reason"] or "No reason")
+
+        try:
+            tg_user = await client.get_users(user_id)
+            name = html.escape(tg_user.first_name or "Unknown")
+        except Exception:
+            name = "Unknown User"
+
+        text += f"<b>{i}.</b> {name} (<code>{user_id}</code>)\n"
+        text += f"📌 <b>Reason:</b> {reason}\n\n"
+
+    buttons = []
+
+    if page > 0:
+        buttons.append(
+            InlineKeyboardButton("⬅️ Prev", callback_data=f"restricted_{page-1}")
+        )
+
+    if end < len(users):
+        buttons.append(
+            InlineKeyboardButton("Next ➡️", callback_data=f"restricted_{page+1}")
+        )
+
+    keyboard = InlineKeyboardMarkup([buttons]) if buttons else None
+
+    await message.reply_text(
+        text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=keyboard
+    )
+
+
+@Client.on_callback_query(filters.regex(r"^restricted_(\d+)"))
+async def restricted_page_callback(client, query):
+
+    page = int(query.matches[0].group(1))
+    users = await get_all_restricted_users()
+
+    start = page * USERS_PER_PAGE
+    end = start + USERS_PER_PAGE
+    chunk = users[start:end]
+
+    text = "<b>⛔ Restricted Users</b>\n\n"
+
+    for i, user in enumerate(chunk, start=start + 1):
+
+        user_id = user["user_id"]
+        reason = html.escape(user["reason"] or "No reason")
+
+        try:
+            tg_user = await client.get_users(user_id)
+            name = html.escape(tg_user.first_name or "Unknown")
+        except Exception:
+            name = "Unknown User"
+
+        text += f"<b>{i}.</b> {name} (<code>{user_id}</code>)\n"
+        text += f"📌 <b>Reason:</b> {reason}\n\n"
+
+    buttons = []
+
+    if page > 0:
+        buttons.append(
+            InlineKeyboardButton("⬅️ Prev", callback_data=f"restricted_{page-1}")
+        )
+
+    if end < len(users):
+        buttons.append(
+            InlineKeyboardButton("Next ➡️", callback_data=f"restricted_{page+1}")
+        )
+
+    keyboard = InlineKeyboardMarkup([buttons]) if buttons else None
+
+    await query.message.edit_text(
+        text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=keyboard
+    )
+
+    await query.answer()
