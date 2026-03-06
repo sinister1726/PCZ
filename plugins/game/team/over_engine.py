@@ -36,52 +36,115 @@ BATTER_LINES = {
         "{p} raises the bat 🏏 Half-century loaded.",
         "Classy stuff! {p} cruises to 50.",
         "Fifty up! {p} is cooking now 🔥",
-        "{p} completes a well-earned 50. Respect."
+        "{p} completes a well-earned 50. Respect.",
+        "Calculated innings. {p} brings up a composed 50.",
+        "{p} builds the foundation with a steady half-century.",
+        "Smart cricket by {p}. 50 runs with great control.",
+        "Fifty for {p}! Bowlers officially requesting a timeout 😂",
+        "{p} reaches 50 and the fielders look tired already 😭",
+        "Scoreboard moving faster than the bowler's plan. 50 for {p}.",
+        "{p} hits 50 and the bowlers are questioning life choices.",
+        "Another boundary… another headache for the bowlers. 50 for {p}.",
+        "{p} casually reaches 50 like it's a warm-up session."
     ],
+
     100: [
         "CENTURY! 💯 {p} has rewritten the script.",
         "{p} goes full beast mode 💥 Hundred on the board.",
         "Standing ovation 👏 {p} brings up a ton.",
-        "What a knock! {p} hits 100 in style."
+        "What a knock! {p} hits 100 in style.",
+        "A complete batting masterclass. {p} reaches a brilliant century.",
+        "{p} controls the innings perfectly. 100 runs of pure class.",
+        "Tactical brilliance from {p}. Century achieved.",
+        "{p} hits a century and the bowlers need therapy now 😭",
+        "100 for {p}! Bowlers checking if this is a nightmare.",
+        "Fielders running more than their fitness coach planned 😅",
+        "{p} destroys the bowling attack. Century domination.",
+        "Bowling unit officially deleted. {p} hits 100.",
+        "{p} turns the pitch into a highlight reel. 100!"
     ],
+
     150: [
         "150! This is domination by {p}.",
         "{p} refuses to stop. 150 and counting 👑",
-        "Absolute massacre. {p} reaches 150."
+        "Absolute massacre. {p} reaches 150.",
+        "{p} converts the century into a massive 150. Elite temperament.",
+        "This innings is now historic. {p} reaches 150.",
+        "150 for {p}. Bowlers requesting early retirement 😭",
+        "At this point {p} should just keep the bat forever.",
+        "{p} farming runs like it's a video game. 150.",
+        "This is bullying now. 150 for {p}."
     ],
+
     250: [
         "HISTORY ALERT 🚨 {p} smashes 250!",
         "Unreal innings… {p} hits 250 😵‍💫",
-        "This is illegal batting. 250 for {p}."
+        "This is illegal batting. 250 for {p}.",
+        "One of the greatest innings ever. {p} reaches 250.",
+        "Statistical insanity. {p} posts 250.",
+        "250 for {p}. Bowlers calling their parents 😭",
+        "At this point the scoreboard needs a software update.",
+        "{p} has completely broken the bowling attack. 250!",
+        "Bowling lineup officially retired by {p}. 250 runs."
     ]
 }
-
 BOWLER_LINES = {
     3: [
         "{p} strikes thrice 🎯 3-wicket haul!",
         "Bowling clinic! {p} picks up 3.",
-        "{p} is on fire 🔥 Three wickets down!"
+        "{p} is on fire 🔥 Three wickets down!",
+        "Brilliant spell from {p}. 3 crucial wickets.",
+        "{p} dismantling the middle order with precision.",
+        "{p} collecting wickets like Pokémon cards 😂",
+        "Another wicket! {p} really said 'mine'.",
+        "{p} deleting batters from existence. 3 wickets.",
+        "Batters walking back faster than they came."
     ],
     5: [
         "FIVE-FOR! 🖐️ {p} demolishes the batting.",
         "{p} claims a 5-wicket haul. Carnage.",
-        "Bowling royalty 👑 5 wickets for {p}."
+        "Bowling royalty 👑 5 wickets for {p}.",
+        "Outstanding bowling performance. 5 wickets for {p}.",
+        "{p} dominates the innings with a five-for.",
+        "{p} collecting batters like trophies 😭",
+        "Five wickets… the batting lineup is gone.",
+        "{p} just ended the batting department.",
+        "Complete destruction. 5 wickets for {p}."
     ],
     "HAT_TRICK": [
         "HAT-TRICK 🎩🎩🎩 {p} has lost his mind!",
         "Three in three! {p} goes nuclear 💣",
-        "Hat-trick scenes 😱 Courtesy: {p}"
+        "Hat-trick scenes 😱 Courtesy: {p}",
+        "Historic moment! Hat-trick by {p}.",
+        "{p} delivers a perfect hat-trick sequence.",
+        "{p} just unlocked the hat-trick achievement 😂",
+        "Batters disappearing like magic.",
+        "{p} sends three batters back to back. Brutal.",
+        "Total chaos! Hat-trick domination."
     ]
 }
 
 PARTNERSHIP_LINES = {
     50: [
         "{p1} & {p2} build a solid 50-run stand 🤝",
-        "Good vibes only 😌 50 partnership!"
+        "Good vibes only 😌 50 partnership!",
+        "Strong partnership developing between {p1} and {p2}.",
+        "{p1} & {p2} stabilize the innings with a 50 stand.",
+        "{p1} & {p2} running like it's a marathon 😂",
+        "Bowlers watching this partnership in pain.",
+        "{p1} & {p2} farming runs freely.",
+        "Bowling attack getting bullied by this pair."
     ],
+
     100: [
         "CENTURY STAND 💯 {p1} & {p2} are unstoppable!",
-        "What a partnership! 100 runs together 🔥"
+        "What a partnership! 100 runs together 🔥",
+        "Magnificent century partnership from {p1} and {p2}.",
+        "{p1} & {p2} dominate the innings with a 100 stand.",
+        "Bowlers asking for new plans after this partnership 😭",
+        "{p1} & {p2} forgot how to get out.",
+        "{p1} & {p2} destroying the bowling attack.",
+        "This partnership is pure domination."
     ]
 }
 
