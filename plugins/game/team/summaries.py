@@ -21,7 +21,8 @@ async def build_over_summary(client, match):
     non_striker_id = match.get("non_striker")
 
     team_balls = match.get("teams", {}).get(bat_team_key, {}).get("balls", 0)
-    completed_over = match.get("current_over", 1) - 1
+    
+    completed_over = team_balls // 6
 
     partnership_runs = match.get("partnership", 0)
     partnership_balls = match.get("partnership_balls", 0)
@@ -86,7 +87,7 @@ async def build_over_summary(client, match):
     ])
 
     return "\n".join(lines)
-
+    
 async def build_innings_summary(client, match):
     finished_team_key = "A" if match.get("batting_team") == "B" else "B" 
     new_batting_team = match.get("batting_team", "A")
