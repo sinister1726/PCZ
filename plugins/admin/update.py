@@ -1,6 +1,6 @@
 import os
 import asyncio
-from git import Repo, GitCommandError, InvalidGitRepositoryError
+from git import Repo
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from config import Config
@@ -12,35 +12,30 @@ OWNER = filters.user(list(Config.OWNER_IDS))
 async def update_bot(client, message):
 
     msg = await message.reply_text(
-        "⚙ <b>Update System</b>\n\nChecking for updates...",
+        "⚙ <b>Update System</b>\n\nChecking repository...",
         parse_mode=ParseMode.HTML
     )
 
-    try:
-        repo = Repo()
-    except InvalidGitRepositoryError:
-        return await msg.edit(
-            "❌ <b>This directory is not a valid git repository.</b>",
-            parse_mode=ParseMode.HTML
-        )
-    except GitCommandError:
-        return await msg.edit(
-            "❌ <b>Git command error occurred.</b>",
-            parse_mode=ParseMode.HTML
-        )
+    if not os.path.exists(".git"):
+        await msg.edit("📦 <b>Initializing git repository...</b>", parse_mode=ParseMode.HTML)
+        os.system("git init")
+        os.system(f"git remote add origin {Config.UPSTREAM_REPO}")
+        os.system("git fetch origin")
+        os.system("git reset --hard origin/main")
+
+    repo = Repo()
 
     try:
         repo.create_remote("upstream", Config.UPSTREAM_REPO)
-    except Exception:
+    except:
         pass
 
-    try:
-        repo.remotes.upstream.fetch()
-    except Exception as e:
-        return await msg.edit(
-            f"❌ <b>Failed to fetch updates.</b>\n<code>{e}</code>",
-            parse_mode=ParseMode.HTML
-        )
+    await msg.edit(
+        "🔎 <b>Checking for updates...</b>",
+        parse_mode=ParseMode.HTML
+    )
+
+    repo.remotes.upstream.fetch()
 
     commits = list(repo.iter_commits("HEAD..upstream/main"))
 
@@ -58,7 +53,7 @@ async def update_bot(client, message):
     if len(text) > 4096:
         text = "<b>📦 Updates detected.</b>\nPulling latest code..."
 
-    await msg.edit(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+    await msg.edit(text, parse_mode=ParseMode.HTML)
 
     await asyncio.sleep(2)
 
@@ -67,14 +62,8 @@ async def update_bot(client, message):
         parse_mode=ParseMode.HTML
     )
 
-    try:
-        repo.git.stash()
-        repo.git.pull("upstream", "main")
-    except Exception as e:
-        return await msg.edit(
-            f"❌ <b>Update failed.</b>\n<code>{e}</code>",
-            parse_mode=ParseMode.HTML
-        )
+    os.system("git stash")
+    os.system("git pull upstream main")
 
     await asyncio.sleep(2)
 
