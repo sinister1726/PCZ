@@ -38,15 +38,15 @@ async def start_cmd(client: Client, message):
 
     buttons = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🧩 PlayZone", url=PLAYZONE_LINK),
-            InlineKeyboardButton("🆘 Support", url=SUPPORT_LINK)
+            InlineKeyboardButton("ʟᴇɢᴀᴄʏ ᴘʟᴀʏᴢᴏɴᴇ 🏏", url=PLAYZONE_LINK),
+            InlineKeyboardButton("🆘 ꜱᴜᴘᴘᴏʀᴛ", url=SUPPORT_LINK)
         ],
         [
-            InlineKeyboardButton("🎵 `Music`", url="https://t.me/KingxMusicRo_BOT"),
-            InlineKeyboardButton("🏏 `Auction & Registration`", url="https://t.me/NexAuc_Robot")
+            InlineKeyboardButton("🎵 ᴍᴜꜱɪᴄ", url="https://t.me/KingxMusicRo_BOT"),
+            InlineKeyboardButton("🏏 ᴀᴜᴄᴛɪᴏɴ & ʀᴇɢɪꜱᴛʀᴀᴛɪᴏɴ", url="https://t.me/NexAuc_Robot")
         ],
         [
-            InlineKeyboardButton("➕ Add to Group", url=f"https://t.me/{Config.BOT_USERNAME.replace('@','')}?startgroup=true")
+            InlineKeyboardButton("➕ ᴀᴅᴅ ᴛᴏ ɢʀᴏᴜᴘ", url=f"https://t.me/{Config.BOT_USERNAME.replace('@','')}?startgroup=true")
         ]
     ])
 
