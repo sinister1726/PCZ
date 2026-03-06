@@ -42,6 +42,10 @@ async def start_cmd(client: Client, message):
             InlineKeyboardButton("🆘 Support", url=SUPPORT_LINK)
         ],
         [
+            InlineKeyboardButton("🎵 `Music`", url="https://t.me/KingxMusicRo_BOT"),
+            InlineKeyboardButton("🏏 `Auction & Registration`", url="https://t.me/NexAuc_Robot")
+        ],
+        [
             InlineKeyboardButton("➕ Add to Group", url=f"https://t.me/{Config.BOT_USERNAME.replace('@','')}?startgroup=true")
         ]
     ])
