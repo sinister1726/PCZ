@@ -203,6 +203,7 @@ async def bowler_dm_handler(client, message):
     if not match or match.get("phase") != "LIVE" or match.get("bowled"):
         return
 
+    match["last_active"] = time.time()
     match["last_bowl"] = int(message.text)
     match["bowled"] = True
 
