@@ -1,15 +1,16 @@
 import asyncio
 import time
+import html
 from pyrogram.enums import ParseMode
 from plugins.game.team import ACTIVE_MATCHES
 from database.connection import db
 
 async def auto_clean_matches(client):
-    """Background task to kill inactive matches and free stuck players"""
-    print("🧹 Match Garbage Collector Started...")
+    """Background task to kill inactive matches and warn hosts EVERY MINUTE"""
+    print("🧹 Match GC with EVERY MINUTE Warnings Started...")
     
     while True:
-        await asyncio.sleep(60)
+        await asyncio.sleep(20)
         
         now = time.time()
         stale_chats = []
@@ -18,8 +19,37 @@ async def auto_clean_matches(client):
             if "last_active" not in match:
                 match["last_active"] = now
             
-            if now - match["last_active"] > 600:
+            inactive_time = now - match["last_active"]
+            inactive_minutes = int(inactive_time // 60)
+
+            if "warnings_sent" not in match:
+                match["warnings_sent"] = []
+
+            if inactive_time < 60:
+                match["warnings_sent"] = []
+
+            if inactive_minutes >= 10:
                 stale_chats.append(chat_id)
+            
+            elif inactive_minutes >= 1 and inactive_minutes not in match["warnings_sent"]:
+                match["warnings_sent"].append(inactive_minutes)
+                mins_left = 10 - inactive_minutes
+                
+                host_id = match.get("host_id")
+                safe_name = html.escape(match.get("host_name", "Host"))
+                host_mention = f"<a href='tg://user?id={host_id}'>{safe_name}</a>"
+                
+                try:
+                    await client.send_message(
+                        chat_id,
+                        f"⚠️ <b>AFK WARNING ({inactive_minutes}/10)</b>\n\n"
+                        f"Host {host_mention}, the match is paused!\n"
+                        f"⏳ Auto-end in: <b>{mins_left} minutes</b>.",
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    print(f"Warning send failed: {e}")
+                    pass
 
         for chat_id in stale_chats:
             match = ACTIVE_MATCHES.pop(chat_id, None)
@@ -27,13 +57,13 @@ async def auto_clean_matches(client):
                 continue
 
             game_id = match.get("game_id")
-            print(f"☠️ Killed Zombie Match {game_id} in chat {chat_id}")
-
+            
             try:
                 await client.send_message(
                     chat_id,
-                    "⚠️ <b>MATCH ABORTED!</b>\n\n"
-                    "No activity for 10 minutes. The match has been automatically ended and all players are now free to play elsewhere.",
+                    "☠️ <b>MATCH ABORTED!</b>\n\n"
+                    "No activity for 10 minutes. The match has been automatically ended.\n"
+                    "Players are now free to play elsewhere.",
                     parse_mode=ParseMode.HTML
                 )
             except Exception:
@@ -45,5 +75,4 @@ async def auto_clean_matches(client):
                         await conn.execute("UPDATE games SET status='ended' WHERE game_id=$1", game_id)
                 except Exception as e:
                     print("❌ GC DB Cleanup Error:", e)
-
-
+                    
