@@ -249,32 +249,10 @@ async def join_team_logic(client, message):
     if user.id in match["teams"]["A"]["players"] or user.id in match["teams"]["B"]["players"]:
         return await message.reply_text("😏 You're already in the match.")
 
-    async with db.pool.acquire() as conn:
-        active_game = await conn.fetchrow(
-            "SELECT g.chat_id, g.title FROM game_players gp JOIN games g ON gp.game_id = g.game_id WHERE gp.user_id = $1 AND g.status = 'active'",
-            user.id
-        )
-
-        if active_game:
-            group_title = active_game["title"] or "another group"
-            return await message.reply_text(
-                f"🛑 You're already playing in <b>{group_title}</b>.\nFinish that match first.",
-                parse_mode=ParseMode.HTML
-            )
-
     current_phase = match.get("phase")
     allowed_phase = f"TEAM_{target_team}_JOIN"
     if current_phase not in (allowed_phase, "JOINING"):
         return await message.reply_text(f"🚪 Team {target_team} join phase closed.")
-
-    async with db.pool.acquire() as conn:
-        await ensure_user_exists(conn, user)
-        await conn.execute(
-            "INSERT INTO game_players (game_id, user_id, team) VALUES ($1, $2, $3)",
-            match["game_id"],
-            user.id,
-            target_team
-        )
 
     match["teams"][target_team]["players"].append(user.id)
     match["user_cache"][user.id] = user.first_name
@@ -286,7 +264,38 @@ async def join_team_logic(client, message):
         f"🎯 <b>{user.first_name}</b> added to <b>Team {target_team}</b>.",
     ]
 
-    await message.reply_text(random.choice(join_messages), parse_mode=ParseMode.HTML)
+    import asyncio
+    asyncio.create_task(message.reply_text(random.choice(join_messages), parse_mode=ParseMode.HTML))
+
+    async def process_db_join():
+        try:
+            async with db.pool.acquire() as conn:
+                active_game = await conn.fetchrow(
+                    "SELECT g.chat_id, g.title FROM game_players gp JOIN games g ON gp.game_id = g.game_id WHERE gp.user_id = $1 AND g.status = 'active' AND g.chat_id != $2",
+                    user.id, chat_id
+                )
+
+                if active_game:
+                    match["teams"][target_team]["players"].remove(user.id)
+                    group_title = active_game["title"] or "another group"
+                    await client.send_message(
+                        chat_id,
+                        f"🛑 <b>Wait {user.first_name}!</b> You're already playing in <b>{group_title}</b>.\nI have removed you from this match.",
+                        parse_mode=ParseMode.HTML
+                    )
+                    return
+
+                await ensure_user_exists(conn, user)
+                await conn.execute(
+                    "INSERT INTO game_players (game_id, user_id, team) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                    match["game_id"],
+                    user.id,
+                    target_team
+                )
+        except Exception as e:
+            print(f"Background Join Error: {e}")
+
+    asyncio.create_task(process_db_join())
     
 @Client.on_message(filters.command(["members", "teams"]) & filters.group)
 async def members(client, message):
@@ -522,6 +531,7 @@ async def test_members_thumbnail(client, message):
         caption=("🧪 **MEMBERS THUMBNAIL TEST**\n"f"👑 Captain A: {cap_a.first_name}\n"f"👑 Captain B: {cap_b.first_name}\n\n_This is a test render only_"),
         parse_mode=ParseMode.MARKDOWN
     )
+    
 @Client.on_message(filters.command("add") & filters.group)
 @host_only
 async def add_player(client, message):
@@ -576,7 +586,6 @@ async def add_player(client, message):
                     failed_details.append(f"• <code>{target}</code> — invalid user")
                     continue
 
-                # Check if user already in another match
                 other = await user_in_other_game(target.id, chat_id)
                 if other:
                     failed_details.append(
@@ -584,7 +593,6 @@ async def add_player(client, message):
                     )
                     continue
 
-                # Check if already added
                 exists = await conn.fetchval(
                     "SELECT 1 FROM game_players WHERE game_id=$1 AND user_id=$2",
                     game_id,
@@ -597,10 +605,8 @@ async def add_player(client, message):
                     )
                     continue
 
-                # Ensure user exists
                 await ensure_user_exists(conn, target)
 
-                # Insert player
                 await conn.execute(
                     "INSERT INTO game_players (game_id, user_id, team) VALUES ($1, $2, $3)",
                     game_id,
@@ -608,7 +614,6 @@ async def add_player(client, message):
                     team
                 )
 
-                # Update memory
                 if target.id not in match["teams"][team]["players"]:
                     match["teams"][team]["players"].append(target.id)
 
