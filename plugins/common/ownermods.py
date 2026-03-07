@@ -39,6 +39,7 @@ async def fetch_dashboard(client, message):
 
         async with db.pool.acquire() as conn:
             users_7d = await conn.fetchval(
+                "SELECT COUNT(*) FROM user_stats" 
             ) or 0
 
         active_users = users_total
@@ -91,10 +92,9 @@ async def fetch_dashboard(client, message):
             f"• Activity: {games_today} games today\n\n"
 
             "⚙️ <b>ADMIN COMMANDS</b>\n"
-            "• /bcast – Copy broadcast\n"
-            "• /fcast – Forward broadcast\n"
-            "• /stats – Visual stats\n"
-            "• /fetch – Full system dashboard\n\n"
+            "• /broad – Start broadcast\n"
+            "• /fetch – Full system dashboard\n"
+            "• /mods – View all moderators\n\n"
 
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"📅 <b>Last Updated:</b> {now.strftime('%Y-%m-%d %H:%M:%S')} UTC"
@@ -106,7 +106,7 @@ async def fetch_dashboard(client, message):
         print("[FETCH ERROR]", e)
         await message.reply_text(
             "⚠️ Failed to fetch system data.\nCheck logs.",
-            parse_mode="HTML"
+            parse_mode=ParseMode.HTML
         )
 
 @Client.on_message(filters.command("addmod"))
@@ -120,8 +120,11 @@ async def addmod_cmd(client, message):
         target = message.reply_to_message.from_user
         tier = int(args[1]) if len(args) > 1 else 1
     elif len(args) >= 3 and args[2].isdigit():
-        target = await client.get_users(args[1])
-        tier = int(args[2])
+        try:
+            target = await client.get_users(args[1])
+            tier = int(args[2])
+        except Exception:
+            return await message.reply_text("❌ Could not find user.")
     else:
         return await message.reply_text(
             "Reply / username / user_id required + tier 😑"
@@ -185,7 +188,7 @@ async def broad_cmd(client, message):
     uid = message.from_user.id
 
     if uid != OWNER_ID and not await is_mod(uid, min_tier=2):
-        return  # silent ignore
+        return
 
     text_payload = None
     source_msg = None
@@ -221,13 +224,6 @@ async def broad_cmd(client, message):
         ]
     )
 
-    await client.send_message(
-        chat_id=message.chat.id,
-        text=preview_text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=buttons
-    )
-
     if source_msg:
         await source_msg.copy(message.chat.id)
     else:
@@ -236,6 +232,13 @@ async def broad_cmd(client, message):
             text=text_payload,
             parse_mode=ParseMode.HTML
         )
+
+    await client.send_message(
+        chat_id=message.chat.id,
+        text=preview_text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=buttons
+    )
 
 @Client.on_callback_query(filters.regex("^broad_"))
 async def broad_callback(client, cb):
@@ -264,15 +267,17 @@ async def broad_callback(client, cb):
     try:
         async with db.pool.acquire() as conn:
             user_rows = await conn.fetch(
+                "SELECT DISTINCT user_id FROM user_stats"
             )
 
             group_rows = await conn.fetch(
-                "SELECT chat_id FROM groups"
+                "SELECT chat_id FROM games" # Changed from groups to games (since games table usually has chat_id)
             )
 
         targets = [u["user_id"] for u in user_rows] + [g["chat_id"] for g in group_rows]
 
-    except Exception:
+    except Exception as e:
+        print("[BROADCAST DB ERROR]", e)
         await msg.edit_text("⚠️ Failed to fetch broadcast targets.")
         return
 
@@ -362,7 +367,7 @@ async def leave_cmd(client, message):
             "Thanks for having me around — it was fun while it lasted.\n\n"
             "If you feel this wasn’t meant to happen or something felt off,\n"
             "no worries at all 🤍 just reach out to the admins here:\n\n"
-            "🎮 𝗣𝗹𝗮𝘆 𝗭𝗼𝗻𝗲 → https://t.me/CLG_fun_zone"
+            "🎮 𝗣𝗹𝗮𝘆 𝗭𝗼𝗻𝗲 → https://t.me/CLG_fun_zone\n" # ───🔥 FIX 3: Added newline here 🔥───
             "Take care & keep the vibes alive 🏏✨",
             parse_mode=ParseMode.HTML
         )
@@ -381,3 +386,4 @@ async def leave_cmd(client, message):
         )
     except Exception:
         pass
+        
