@@ -1,5 +1,6 @@
 import time
 import asyncio
+import pyrogram.errors
 from datetime import datetime, timedelta
 
 from pyrogram import Client, filters
@@ -243,10 +244,6 @@ async def broad_cmd(client, message):
 @Client.on_callback_query(filters.regex("^broad_"))
 async def broad_callback(client, cb):
     uid = cb.from_user.id
-    
-    if uid != OWNER_ID and not await is_mod(uid, min_tier=2):
-        await cb.answer("Not for you 😌", show_alert=True)
-        return
 
     data = BROADCAST_CACHE.get(uid)
     if not data:
@@ -266,13 +263,8 @@ async def broad_callback(client, cb):
 
     try:
         async with db.pool.acquire() as conn:
-            user_rows = await conn.fetch(
-                "SELECT DISTINCT user_id FROM user_stats"
-            )
-
-            group_rows = await conn.fetch(
-                "SELECT chat_id FROM games" # Changed from groups to games (since games table usually has chat_id)
-            )
+            user_rows = await conn.fetch("SELECT DISTINCT user_id FROM user_stats")
+            group_rows = await conn.fetch("SELECT DISTINCT chat_id FROM games")
 
         targets = [u["user_id"] for u in user_rows] + [g["chat_id"] for g in group_rows]
 
@@ -281,12 +273,13 @@ async def broad_callback(client, cb):
         await msg.edit_text("⚠️ Failed to fetch broadcast targets.")
         return
 
+    total_targets = len(targets)
     sent = 0
     failed = 0
 
-    await msg.edit_text("🚀 Broadcasting… grab popcorn 🍿")
+    await msg.edit_text(f"🚀 Broadcasting to {total_targets} targets… grab popcorn 🍿")
 
-    for tid in targets:
+    for i, tid in enumerate(targets, start=1):
         try:
             if source_msg:
                 sent_msg = await source_msg.copy(tid)
@@ -304,18 +297,35 @@ async def broad_callback(client, cb):
                     pass
 
             sent += 1
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.1)
 
+        except pyrogram.errors.FloodWait as e:
+            print(f"⏳ FloodWait: Sleeping for {e.value} seconds...")
+            await asyncio.sleep(e.value + 2)
+            failed += 1 
         except Exception:
             failed += 1
             continue
 
+        if i % 50 == 0:
+            try:
+                await msg.edit_text(
+                    f"🚀 <b>Broadcasting Live...</b>\n\n"
+                    f"⏳ Progress: <b>{i} / {total_targets}</b>\n"
+                    f"📤 Sent: <b>{sent}</b>\n"
+                    f"❌ Failed: <b>{failed}</b>",
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception:
+                pass
+
     BROADCAST_CACHE.pop(uid, None)
 
     await msg.edit_text(
-        f"✅ <b>Broadcast Completed</b>\n\n"
-        f"📤 Sent: <b>{sent}</b>\n"
-        f"❌ Failed: <b>{failed}</b>",
+        f"✅ <b>Broadcast Completed!</b> 🎉\n\n"
+        f"🎯 Total Targets: <b>{total_targets}</b>\n"
+        f"📤 Successfully Sent: <b>{sent}</b>\n"
+        f"❌ Failed/Blocked: <b>{failed}</b>",
         parse_mode=ParseMode.HTML
     )
 
