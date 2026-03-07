@@ -155,10 +155,14 @@ async def claim_host(client, query):
     match.pop("prev_host_id", None)
 
     try:
-        from database.games import update_host
-        await update_host(chat_id, user.id)
+        from database.connection import db
+        async with db.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE games SET host_id = $1 WHERE game_id = $2", 
+                user.id, match["game_id"]
+            )
     except Exception as e:
-        print("Host DB sync failed:", e)
+        print("❌ Host DB sync failed:", e)
 
     await query.message.edit_text(
         (
