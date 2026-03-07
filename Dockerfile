@@ -11,4 +11,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD sh -c "gunicorn app:app & python3 bot.py"
+CMD sh -c "rm -rf .git && gunicorn app:app & python3 bot.py"
