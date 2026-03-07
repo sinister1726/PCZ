@@ -19,13 +19,13 @@ async def start_nexora():
         plugins=dict(root="plugins")
     )
 
-    await bot.start()
-    print("🚀 Nexora Cricket Bot is Online!")
-
     try:
         await initialize_database()
     except Exception as e:
         print(f"❌ Database Initialization Failed: {e}")
+    
+    await bot.start()
+    print("🚀 Nexora Cricket Bot is Online!")
 
     from plugins.game.team import ACTIVE_MATCHES
     for m in ACTIVE_MATCHES.values():
