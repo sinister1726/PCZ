@@ -1,4 +1,5 @@
 import os
+import sys
 import asyncio
 import shutil
 from git import Repo, exc
@@ -8,7 +9,6 @@ from config import Config
 
 OWNER = filters.user(list(Config.OWNER_IDS))
 
-
 @Client.on_message(filters.command(["gitpull", "update"]) & OWNER)
 async def update_bot(client, message):
 
@@ -17,14 +17,12 @@ async def update_bot(client, message):
         parse_mode=ParseMode.HTML
     )
 
-    # Check git installation
     if not shutil.which("git"):
         return await msg.edit(
             "❌ <b>CRITICAL ERROR:</b> <code>git</code> not installed.\nInstall using <code>apt install git</code>",
             parse_mode=ParseMode.HTML
         )
 
-    # Initialize repo if missing
     if not os.path.exists(".git"):
         await msg.edit("📦 <b>Initializing git repository...</b>", parse_mode=ParseMode.HTML)
 
@@ -33,7 +31,6 @@ async def update_bot(client, message):
         os.system("git fetch origin")
         os.system("git reset --hard origin/main")
 
-    # Load repo
     try:
         repo = Repo(".")
     except exc.InvalidGitRepositoryError:
@@ -42,11 +39,14 @@ async def update_bot(client, message):
             parse_mode=ParseMode.HTML
         )
 
-    # Ensure upstream exists
-    remotes = [r.name for r in repo.remotes]
-
-    if "upstream" not in remotes:
-        repo.create_remote("upstream", Config.UPSTREAM_REPO)
+    try:
+        remotes = [r.name for r in repo.remotes]
+        if "upstream" in remotes:
+            repo.remotes.upstream.set_url(Config.UPSTREAM_REPO)
+        else:
+            repo.create_remote("upstream", Config.UPSTREAM_REPO)
+    except Exception as e:
+        return await msg.edit(f"❌ <b>Remote Setup Error:</b> {e}", parse_mode=ParseMode.HTML)
 
     await msg.edit(
         "🔎 <b>Checking for updates...</b>",
@@ -100,3 +100,4 @@ async def update_bot(client, message):
     os.system("pip3 install -r requirements.txt")
 
     os.execl(sys.executable, sys.executable, *sys.argv)
+    
