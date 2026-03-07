@@ -1,8 +1,12 @@
 import asyncio
+import time
 from pyrogram import Client, idle
+from pyrogram.enums import ParseMode
 from config import Config
 from database.connection import db
 from database.migrate import migrate
+
+LOG_CHANNEL = -1003692127639
 
 async def initialize_database():
     await db.connect()
@@ -10,6 +14,9 @@ async def initialize_database():
     print("✅ Database connected & tables ready")
 
 async def start_nexora():
+
+    start_time = time.time()
+
     bot = Client(
         "bot",
         bot_token=Config.BOT_TOKEN,
@@ -23,9 +30,37 @@ async def start_nexora():
         await initialize_database()
     except Exception as e:
         print(f"❌ Database Initialization Failed: {e}")
-    
+
     await bot.start()
+
+    boot_speed = round(time.time() - start_time, 2)
+
     print("🚀 Nexora Cricket Bot is Online!")
+
+    try:
+        me = await bot.get_me()
+
+        startup_text = (
+            "🚀 <b>ʟᴇɢᴀᴄʏ ʙᴏᴛ ɪꜱ ᴏɴʟɪɴᴇ</b>\n\n"
+            "━━━━━━━━━━━━━━━\n"
+            f"🤖 <b>Bot :</b> {me.first_name}\n"
+            f"🆔 <b>ID :</b> <code>{me.id}</code>\n"
+            f"⚡ <b>Startup Speed :</b> {boot_speed}s\n"
+            f"🧠 <b>Workers :</b> 80\n"
+            f"🗄 <b>Database :</b> Connected\n"
+            f"🌐 <b>Status :</b> Running\n"
+            "━━━━━━━━━━━━━━━\n"
+            "✨ <b>ʟᴇɢᴀᴄʏ ᴘᴏᴡᴇʀᴇᴅ</b>"
+        )
+
+        await bot.send_message(
+            LOG_CHANNEL,
+            startup_text,
+            parse_mode=ParseMode.HTML
+        )
+
+    except Exception as e:
+        print("Log channel error:", e)
 
     from plugins.game.team import ACTIVE_MATCHES
     for m in ACTIVE_MATCHES.values():
