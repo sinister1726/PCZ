@@ -16,6 +16,10 @@ async def auto_clean_matches(client):
         stale_chats = []
 
         for chat_id, match in list(ACTIVE_MATCHES.items()):
+            
+            if match.get("mode") == "Solo":
+                continue 
+            
             current_phase = match.get("phase", "UNKNOWN")
 
             if current_phase != "LIVE":
