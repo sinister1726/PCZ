@@ -1,4 +1,5 @@
 import asyncio
+import time
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from pyrogram.enums import ParseMode
@@ -20,10 +21,14 @@ async def auto_start_timer(client, chat_id):
         return
 
     match["phase"] = "LIVE"
+    match["last_activity"] = time.time()
+    
     match["striker"] = match["batting_order"][0]
-    match["current_bowler"] = match["batting_order"][1]
+    match["current_bowler"] = match["batting_order"][1] if match["batting_order"][1] != match["striker"] else match["batting_order"][2]
     match["current_batter_idx"] = 0
     match["bowler_balls"] = 0
+    
+    match["idle_task"] = asyncio.create_task(idle_timeout_checker(client, chat_id))
 
     await client.send_message(chat_id, "🚀 <b>𝗦𝗢𝗟𝗢 𝗠𝗔𝗧𝗖𝗛 𝗦𝗧𝗔𝗥𝗧𝗘𝗗!</b>\n\nGet ready for the ultimate showdown!", parse_mode=ParseMode.HTML)
 
@@ -39,6 +44,7 @@ async def auto_start_timer(client, chat_id):
 
 async def handle_solo_timeout(client, chat_id, match, role, user_id):
     if match.get("phase") != "LIVE": return
+    match["last_activity"] = time.time()
     
     mention = f"<a href='tg://user?id={user_id}'>{match['user_cache'].get(user_id, 'Player')}</a>"
     match["players"][user_id]["runs"] -= 6
@@ -74,6 +80,7 @@ async def init_solo_mode(client, query):
     ACTIVE_MATCHES[chat_id] = {
         "mode": "Solo",
         "phase": "REGISTRATION",
+        "host_id": user.id,
         "players": {}, 
         "batting_order": [],
         "user_cache": {user.id: user.first_name},
@@ -83,7 +90,10 @@ async def init_solo_mode(client, query):
         "current_bowler": None,
         "bowler_balls": 0,
         "bowler_input": None,
-        "timer_task": None
+        "timer_task": None,
+        "idle_task": None,
+        "last_activity": time.time(),
+        "lobby_msg": None 
     }
 
     ACTIVE_MATCHES[chat_id]["players"][user.id] = {
@@ -93,66 +103,69 @@ async def init_solo_mode(client, query):
 
     asyncio.create_task(auto_start_timer(client, chat_id))
 
-    buttons = InlineKeyboardMarkup([
-        [InlineKeyboardButton("✋ Join Solo", callback_data="join_solo"), InlineKeyboardButton("🏃 Leave", callback_data="leave_solo")]
-    ])
-
     await query.answer("Solo Mode Lobby Created! 🏏")
     try:
-        await query.message.edit_media(
+        msg = await query.message.edit_media(
             media=InputMediaPhoto(
                 media=SOLO_MODE_IMAGE, 
-                caption="👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘 — 𝗥𝗘𝗚𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡</b>\n\n🔥 <b>Rules:</b>\n• Bowler plays in Bot DM, Batter in Group.\n• No 0 (defend) allowed.\n• 60s Timeout = -6 Runs penalty.\n• Automatic start in 60s.\n\n👥 <b>Joined:</b> 1\n⏳ <b>Starting in 60 seconds...</b>"
-            ), reply_markup=buttons
+                caption="👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘 — 𝗥𝗘𝗚𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡</b>\n\n🔥 <b>Rules:</b>\n• Play via DM and Group.\n• Type <code>/join</code> to enter.\n• Type <code>/leave</code> to exit.\n• 60s automatic start!\n\n👥 <b>Joined:</b> 1\n⏳ <b>Starting in 60 seconds...</b>"
+            )
         )
+        ACTIVE_MATCHES[chat_id]["lobby_msg"] = msg
     except MessageNotModified: pass
 
-@Client.on_callback_query(filters.regex("^join_solo$"))
-async def join_solo(client, query):
-    chat_id = query.message.chat.id
-    user = query.from_user
+@Client.on_message(filters.command("join") & filters.group)
+async def join_solo_cmd(client, message):
+    if not getattr(message, "from_user", None): return 
+    
+    chat_id = message.chat.id
+    user = message.from_user
     match = ACTIVE_MATCHES.get(chat_id)
 
-    if not match or match.get("phase") != "REGISTRATION" or match.get("mode") != "Solo":
-        return await query.answer("No active solo registration here.", show_alert=True)
+    if not match or match.get("phase") != "REGISTRATION" or match.get("mode") != "Solo": return 
     if user.id in match["players"]:
-        return await query.answer("Aap already match mein ho bhai!", show_alert=True)
+        return await message.reply_text("You are already in the match!", quote=True)
 
     match["players"][user.id] = {"runs": 0, "wickets": 0, "balls_faced": 0, "balls_bowled": 0, "is_out": False}
     match["batting_order"].append(user.id)
     match["user_cache"][user.id] = user.first_name
+    match["last_activity"] = time.time()
     
     total_players = len(match["players"])
-    await query.answer(f"Joined at Position #{total_players}! ✅", show_alert=True)
-    await update_lobby(query.message, total_players)
+    await message.reply_text(f"✅ Joined at Position #{total_players}!", quote=True)
+    await update_lobby(match, total_players)
 
-@Client.on_callback_query(filters.regex("^leave_solo$"))
-async def leave_solo(client, query):
-    chat_id = query.message.chat.id
-    user = query.from_user
+@Client.on_message(filters.command("leave") & filters.group)
+async def leave_solo_cmd(client, message):
+    if not getattr(message, "from_user", None): return 
+    
+    chat_id = message.chat.id
+    user = message.from_user
     match = ACTIVE_MATCHES.get(chat_id)
 
-    if not match or match.get("phase") != "REGISTRATION" or match.get("mode") != "Solo":
-        return await query.answer("No active solo registration here.", show_alert=True)
+    if not match or match.get("phase") != "REGISTRATION" or match.get("mode") != "Solo": return 
     if user.id not in match["players"]:
-        return await query.answer("Aap match mein ho hi nahi!", show_alert=True)
+        return await message.reply_text("You are not in the match!", quote=True)
 
     del match["players"][user.id]
     match["batting_order"].remove(user.id)
-    await query.answer("Aap match se baahar ho gaye! 👋", show_alert=True)
-    await update_lobby(query.message, len(match["players"]))
+    match["last_activity"] = time.time()
+    
+    await message.reply_text("👋 You have left the match!", quote=True)
+    await update_lobby(match, len(match["players"]))
 
-async def update_lobby(message, total_players):
-    buttons = InlineKeyboardMarkup([[InlineKeyboardButton("✋ Join Solo", callback_data="join_solo"), InlineKeyboardButton("🏃 Leave", callback_data="leave_solo")]])
+async def update_lobby(match, total_players):
+    if not match.get("lobby_msg"): return
     try:
-        await message.edit_caption(
-            caption=f"👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘 — 𝗥𝗘𝗚𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡</b>\n\n🔥 <b>Rules:</b>\n• Bowler plays in Bot DM, Batter in Group.\n• No 0 (defend) allowed.\n• 60s Timeout = -6 Runs penalty.\n• Automatic start in 60s.\n\n👥 <b>Joined:</b> {total_players}\n⏳ <b>Starting automatically...</b>\n<i>Type /members to see join order.</i>",
-            reply_markup=buttons, parse_mode=ParseMode.HTML
+        await match["lobby_msg"].edit_caption(
+            caption=f"👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘 — 𝗥𝗘𝗚𝗜𝗦𝗧𝗥𝗔𝗧𝗜𝗢𝗡</b>\n\n🔥 <b>Rules:</b>\n• Play via DM and Group.\n• Type <code>/join</code> to enter.\n• Type <code>/leave</code> to exit.\n• 60s automatic start!\n\n👥 <b>Joined:</b> {total_players}\n⏳ <b>Starting automatically...</b>",
+            parse_mode=ParseMode.HTML
         )
     except MessageNotModified: pass
 
 @Client.on_message(filters.command("members") & filters.group)
 async def solo_members_cmd(client, message):
+    if not getattr(message, "from_user", None): return
     chat_id = message.chat.id
     match = ACTIVE_MATCHES.get(chat_id)
 
@@ -170,6 +183,7 @@ async def announce_solo_turn(client, chat_id, match):
     batter_name = match["user_cache"][match["striker"]]
     bowler_name = match["user_cache"][match["current_bowler"]]
     match["bowler_input"] = None
+    match["last_activity"] = time.time()
     
     if match.get("timer_task"): match["timer_task"].cancel()
     
@@ -197,11 +211,13 @@ async def announce_solo_turn(client, chat_id, match):
 
 async def rotate_solo_players(client, chat_id, match, is_wicket=False):
     players = match["batting_order"]
+    match["last_activity"] = time.time()
     
     if is_wicket:
         match["players"][match["striker"]]["is_out"] = True
         match["current_batter_idx"] += 1
         
+        # Auto-End when all players have batted
         if match["current_batter_idx"] >= len(players):
             return await end_solo_match(match)
             
@@ -226,6 +242,8 @@ async def rotate_solo_players(client, chat_id, match, is_wicket=False):
 
 @Client.on_message(filters.private & filters.text)
 async def solo_dm_bowler(client, message):
+    if not getattr(message, "from_user", None): return 
+    
     user_id = message.from_user.id
     text = message.text.strip()
     
@@ -246,6 +264,7 @@ async def solo_dm_bowler(client, message):
     if active_match.get("timer_task"): active_match["timer_task"].cancel()
         
     active_match["bowler_input"] = number
+    active_match["last_activity"] = time.time()
     ball_no = active_match["bowler_balls"] + 1
     striker_name = active_match["user_cache"].get(active_match["striker"], "Batter")
     
@@ -262,6 +281,8 @@ async def solo_dm_bowler(client, message):
 
 @Client.on_message(filters.group & filters.text)
 async def solo_group_batter(client, message):
+    if not getattr(message, "from_user", None): return 
+    
     chat_id = message.chat.id
     user_id = message.from_user.id
     text = message.text.strip()
@@ -286,6 +307,7 @@ async def solo_group_batter(client, message):
         
     batter_input = number
     bowler_input = match.pop("bowler_input")
+    match["last_activity"] = time.time()
     
     striker_name = match['user_cache'].get(striker, 'Batter')
     bowler_name = match['user_cache'].get(bowler, 'Bowler')
@@ -295,8 +317,7 @@ async def solo_group_batter(client, message):
         msg = f"☝️ <b>WICKET! CLEAN BOWLED!</b> (Ball {ball_no}/3)\n\n🎳 <a href='tg://user?id={bowler}'>{bowler_name}</a> picked {bowler_input}\n🏏 <a href='tg://user?id={striker}'>{striker_name}</a> picked {batter_input}\n\n<i>Eliminated!</i>"
         try:
             await client.send_message(chat_id, msg, parse_mode=ParseMode.HTML)
-        except:
-            await client.send_message(chat_id, msg, parse_mode=ParseMode.HTML)
+        except: pass
             
         match["players"][bowler]["wickets"] += 1
         match["players"][striker]["balls_faced"] += 1
@@ -309,17 +330,82 @@ async def solo_group_batter(client, message):
         
         try:
             await client.send_message(chat_id, msg, parse_mode=ParseMode.HTML)
-        except:
-            await client.send_message(chat_id, msg, parse_mode=ParseMode.HTML)
+        except: pass
             
         match["players"][striker]["runs"] += batter_input
         match["players"][striker]["balls_faced"] += 1
         match["players"][bowler]["balls_bowled"] += 1
         await rotate_solo_players(client, chat_id, match, is_wicket=False)
 
+@Client.on_message(filters.command("score") & filters.group)
+async def solo_score_cmd(client, message):
+    if not getattr(message, "from_user", None): return
+    chat_id = message.chat.id
+    match = ACTIVE_MATCHES.get(chat_id)
+
+    if not match or match.get("mode") != "Solo" or match.get("phase") != "LIVE": return 
+
+    res_text = "📊 <b>𝗦𝗢𝗟𝗢 𝗠𝗔𝗧𝗖𝗛 - 𝗟𝗜𝗩𝗘 𝗦𝗖𝗢𝗥𝗘</b> 📊\n━━━━━━━━━━━━━━━━━━━━━━\n"
+    for uid in match["batting_order"]:
+        stats = match["players"][uid]
+        name = match["user_cache"].get(uid, "Player")
+        status = "❌ Out" if stats["is_out"] else "✅ Not Out"
+        res_text += f"👤 <b>{name}</b>: {stats['runs']}R ({stats['balls_faced']}b) | {stats['wickets']}W | {status}\n"
+
+    await message.reply_text(res_text, parse_mode=ParseMode.HTML)
+
+@Client.on_message(filters.command("end") & filters.group)
+async def solo_end_cmd(client, message):
+    if not getattr(message, "from_user", None): return
+    chat_id = message.chat.id
+    match = ACTIVE_MATCHES.get(chat_id)
+
+    if not match or match.get("mode") != "Solo": return
+    
+    buttons = InlineKeyboardMarkup([
+        [InlineKeyboardButton("✅ Yes, End Match", callback_data="confirm_end_solo")],
+        [InlineKeyboardButton("❌ Cancel", callback_data="cancel_end_solo")]
+    ])
+    
+    await message.reply_text("⚠️ <b>Are you sure you want to end the current match?</b>", reply_markup=buttons, parse_mode=ParseMode.HTML)
+
+@Client.on_callback_query(filters.regex("^confirm_end_solo$"))
+async def confirm_end_solo(client, query):
+    chat_id = query.message.chat.id
+    match = ACTIVE_MATCHES.get(chat_id)
+    
+    if not match or match.get("mode") != "Solo":
+        return await query.message.delete()
+        
+    if query.from_user.id != match.get("host_id"):
+        return await query.answer("Only the match host can end the match!", show_alert=True)
+        
+    await query.message.edit_text("🛑 <b>Match ended early by Host!</b>", parse_mode=ParseMode.HTML)
+    await end_solo_match(match)
+
+@Client.on_callback_query(filters.regex("^cancel_end_solo$"))
+async def cancel_end_solo(client, query):
+    chat_id = query.message.chat.id
+    match = ACTIVE_MATCHES.get(chat_id)
+    
+    if not match or match.get("mode") != "Solo":
+        return await query.message.delete()
+        
+    if query.from_user.id != match.get("host_id"):
+        return await query.answer("Only the match host can cancel this!", show_alert=True)
+        
+    await query.message.delete()
+
 async def end_solo_match(match):
     client, chat_id = match["client"], match["chat_id"]
     players = match["players"]
+
+    if match.get("timer_task"): match["timer_task"].cancel()
+    if match.get("idle_task"): match["idle_task"].cancel()
+
+    if not players:
+        ACTIVE_MATCHES.pop(chat_id, None)
+        return
 
     top_batsman_id = max(players, key=lambda k: players[k]["runs"])
     top_bowler_id = max(players, key=lambda k: players[k]["wickets"])
