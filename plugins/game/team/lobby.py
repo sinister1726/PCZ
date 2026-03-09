@@ -737,3 +737,99 @@ async def shift_team(client, message):
 
     await message.reply_text(f"🔁 Team switch successful!\n\n👤 <b>{user.first_name}</b> moved to <b>Team {new_team}</b> <b>{shifts_used}/2</b>\nChoose wisely… last chances don’t come back 😏", parse_mode=ParseMode.HTML)
             
+REPLACEMENT_QUEUE = {}
+
+@Client.on_message(filters.command("bench") & filters.group)
+async def replacement_queue(client, message):
+    chat_id = message.chat.id
+    user = message.from_user
+    match = ACTIVE_MATCHES.get(chat_id)
+
+    game = await get_active_game(chat_id)
+
+    if not match or not game:
+        return await message.reply_text(
+            "😴 Nothing happening here right now.\nStart a match first and then we’ll talk replacements."
+        )
+
+    # allow only after match actually starts
+    if not (match.get("striker") and match.get("current_bowler")):
+        return await message.reply_text(
+            "⏳ Hold up!\nReplacement queue opens once the match is live."
+        )
+
+    host_id = match.get("host_id")
+
+    # ensure queue exists
+    if chat_id not in REPLACEMENT_QUEUE:
+        REPLACEMENT_QUEUE[chat_id] = []
+
+    queue = REPLACEMENT_QUEUE[chat_id]
+
+    # detect admin
+    is_admin = False
+    try:
+        member = await client.get_chat_member(chat_id, user.id)
+        if member.status in ("administrator", "creator"):
+            is_admin = True
+    except:
+        pass
+
+    # ADMIN / HOST VIEW LIST
+    if user.id == host_id or is_admin:
+
+        if not queue:
+            return await message.reply_text(
+                "📭 **Replacement Bench Empty**\n"
+                "No standby players yet.\n"
+                "Spectators can join using /bench",
+                parse_mode=ParseMode.HTML
+            )
+
+        text = "🔄 <b>Standby Players</b>\n"
+        text += "┈┈┈┈┈┈┈┈┈┈┈\n\n"
+
+        for i, uid in enumerate(queue, start=1):
+            name = match["user_cache"].get(uid, "Player")
+            text += (
+                f"<b>{i}.</b> <a href='tg://user?id={uid}'>{name}</a>\n"
+                f"   ➥ <code>{uid}</code>\n\n"
+            )
+
+        text += "👀 Waiting to be called into the match."
+
+        return await message.reply_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True
+        )
+
+    # USER ALREADY IN MATCH
+    if user.id in match["players"]:
+        return await message.reply_text(
+            "😄 Easy there champ.\nYou're already inside the match — no need to sit on the bench."
+        )
+
+    # ALREADY IN QUEUE
+    if user.id in queue:
+        pos = queue.index(user.id) + 1
+        return await message.reply_text(
+            f"🪑 You're already on standby.\n"
+            f"Position in queue: <b>#{pos}</b>",
+            parse_mode=ParseMode.HTML
+        )
+
+    # REGISTER USER
+    queue.append(user.id)
+    match["user_cache"][user.id] = user.first_name
+
+    position = len(queue)
+
+    await message.reply_text(
+        f"✅ <b>You're now on the standby bench</b>\n"
+        f"👤 <b>{user.first_name}</b>\n"
+        f"➥ Queue position: <b>#{position}</b>\n"
+        f"➥ <code>{user.id}</code>\n"
+        f"⏳ Sit tight — the host will bring you in if a spot opens.",
+        parse_mode=ParseMode.HTML
+    )
