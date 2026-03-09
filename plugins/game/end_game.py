@@ -10,6 +10,7 @@ from database.games import is_game_active, end_game as close_db_game
 from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.over_engine import end_match
 from plugins.utilities.logger import send_match_log
+from plugins.game.team.bench import REPLACEMENT_QUEUE
 
 class MatchEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -180,6 +181,11 @@ async def confirm_endgame(client, query):
     except:
         pass
 
+    try:
+        REPLACEMENT_QUEUE.pop(chat_id, None)
+    except:
+        pass
+
     ACTIVE_MATCHES.pop(chat_id, None)
 
     try:
@@ -190,7 +196,7 @@ async def confirm_endgame(client, query):
             await client.send_message(chat_id, end_text)
         except:
             pass
-
+            
 @Client.on_callback_query(filters.regex("^cancel_endgame$"))
 async def cancel_endgame(client, query):
     chat_id = query.message.chat.id
