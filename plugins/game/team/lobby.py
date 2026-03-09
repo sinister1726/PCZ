@@ -9,7 +9,6 @@ from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.errors import ChatAdminRequired
-
 from PIL import Image, ImageDraw, ImageFont
 from plugins.game.team import ACTIVE_MATCHES
 from plugins.game.team.state import GROUP_COOLDOWN
@@ -532,6 +531,7 @@ async def test_members_thumbnail(client, message):
         parse_mode=ParseMode.MARKDOWN
     )
     
+
 @Client.on_message(filters.command("add") & filters.group)
 @host_only
 async def add_player(client, message):
@@ -563,12 +563,15 @@ async def add_player(client, message):
 
     if len(args) == 3:
         raw_users = args[2].replace("\n", " ").split()
-        for raw in raw_users:
+
+        async def fetch_user(raw):
             try:
-                user = await client.get_users(raw)
-                targets.append(user)
+                return await client.get_users(raw)
             except Exception:
-                targets.append(raw)
+                return raw
+
+        results = await asyncio.gather(*(fetch_user(r) for r in raw_users))
+        targets.extend(results)
 
     if not targets:
         return await message.reply_text(
@@ -660,7 +663,7 @@ async def add_player(client, message):
         parse_mode=ParseMode.HTML,
         disable_web_page_preview=True
     )
-    
+
 @Client.on_message(filters.command("remove") & filters.group)
 @host_only
 async def remove_player(client, message):
