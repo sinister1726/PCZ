@@ -69,29 +69,3 @@ async def back_to_start(client, query):
     except MessageNotModified:
         pass
 
-@Client.on_callback_query(filters.regex("^mode_solo$"))
-async def solo_mode_dev(client, query):
-    await query.answer()
-
-    buttons = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("🏏 Playzone", url="https://t.me/CLG_fun_zone"),
-                InlineKeyboardButton("🔙 Back", callback_data="mode_back")
-            ]
-        ]
-    )
-
-    try:
-        await query.message.edit_caption(
-            caption=(
-                "👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘</b>\n"
-                "⚙️ <b>This mode is currently in development.</b>\n"
-                "It will be available very soon.\n"
-                "📢 Stay tuned for updates!"
-            ),
-            parse_mode=ParseMode.HTML,
-            reply_markup=buttons
-        )
-    except MessageNotModified:
-        pass

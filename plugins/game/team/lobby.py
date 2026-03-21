@@ -296,11 +296,56 @@ async def join_team_logic(client, message):
 
     asyncio.create_task(process_db_join())
     
+async def _solo_members(client, message, match):
+    user_cache = match.get("user_cache", {})
+    players = match.get("players", [])
+    current_batter = match.get("current_batter")
+    current_bowler = match.get("current_bowler")
+    phase = match.get("phase", "SOLO_JOIN")
+
+    status = "📝 Joining" if phase == "SOLO_JOIN" else ("🏏 In Progress" if phase == "LIVE" else "✅ Finished")
+
+    player_lines = []
+    for uid in players:
+        name = user_cache.get(uid, "Player")
+        tag = ""
+        if uid == current_batter:
+            tag = " 🏏"
+        elif uid == current_bowler:
+            tag = " ⚾"
+        player_lines.append(f"@{name}" if "@" not in name else name + tag)
+
+    if not player_lines:
+        player_lines = ["No players yet"]
+
+    text = (
+        "👤 <b>Solo Players</b>\n\n"
+        + "\n".join(player_lines)
+        + f"\n\n📍 <b>Status:</b> {status}"
+        + f"\n👑 <b>Host:</b> {match.get('host_name', 'Host')}"
+    )
+
+    refresh_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refresh", callback_data="refresh_members")]])
+
+    try:
+        await message.reply_photo(
+            photo=MEMBERS_IMAGE,
+            caption=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=refresh_markup,
+        )
+    except Exception:
+        await message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=refresh_markup)
+
+
 @Client.on_message(filters.command(["members", "teams"]) & filters.group)
 async def members(client, message):
     chat_id = message.chat.id
     user = message.from_user
     match = ACTIVE_MATCHES.get(chat_id)
+
+    if match and match.get("mode") == "Solo":
+        return await _solo_members(client, message, match)
 
     game = await get_active_game(chat_id)
     if not match and not game:

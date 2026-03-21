@@ -79,6 +79,38 @@ async def confirm_endgame(client, query):
             "🚫 Only the Match Host or Admins can click this.", show_alert=True
         )
 
+    if match and match.get("mode") == "Solo":
+        await query.answer("Ending solo match…")
+        try:
+            await query.message.edit_reply_markup(None)
+        except Exception:
+            pass
+        for key_r in ["bowler", "batter"]:
+            task = match.get("timeouts", {}).get(key_r, {}).get("task")
+            if task:
+                try:
+                    task.cancel()
+                except Exception:
+                    pass
+        jt = match.get("join_timer_task")
+        if jt:
+            try:
+                jt.cancel()
+            except Exception:
+                pass
+        from plugins.game.solo.engine import _end_solo_match
+        await _end_solo_match(match, forced=True)
+        ACTIVE_MATCHES.pop(chat_id, None)
+        try:
+            await close_db_game(chat_id)
+        except Exception:
+            pass
+        try:
+            await query.message.edit_text("🛑 **𝗦𝗢𝗟𝗢 𝗚𝗔𝗠𝗘 𝗘𝗡𝗗𝗘𝗗**\n`Match stopped by host.`")
+        except Exception:
+            pass
+        return
+
     await query.answer("Force ending match & generating backup…")
 
     try:

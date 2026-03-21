@@ -71,6 +71,10 @@ async def start_nexora():
     asyncio.create_task(auto_clean_matches(bot))
     print("🧹 Background Garbage Collector is active!")
 
+    from plugins.game.solo.cleanup import auto_clean_solo
+    asyncio.create_task(auto_clean_solo(bot))
+    print("🧹 Solo Background Cleaner is active!")
+
     await idle()
 
     print("🛑 Shutting down...")

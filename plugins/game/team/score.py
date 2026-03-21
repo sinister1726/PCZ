@@ -13,19 +13,25 @@ async def score_cmd(client, message: Message):
     current_time = time.time()
 
     if chat_id in SCORE_COOLDOWN and current_time - SCORE_COOLDOWN[chat_id] < 3:
-        return 
+        return
 
     match = ACTIVE_MATCHES.get(chat_id)
     if not match:
         return await message.reply_text(
-            "😴 <b>It’s quiet out there.</b>\nNo match running right now. Start now with /start", 
+            "😴 <b>It's quiet out there.</b>\nNo match running right now. Start now with /start",
             parse_mode=ParseMode.HTML
         )
+
+    if match.get("mode") == "Solo":
+        SCORE_COOLDOWN[chat_id] = current_time
+        from plugins.game.solo import build_solo_score_text
+        text = build_solo_score_text(match)
+        return await message.reply_text(text, parse_mode=ParseMode.HTML)
 
     if not match.get("client"):
         match["client"] = client
 
-    if "innings" not in match: 
+    if "innings" not in match:
         match["innings"] = 1
 
     bat_team = match.get("batting_team")
@@ -37,7 +43,7 @@ async def score_cmd(client, message: Message):
         match["bowling_team"] = "B" if bat_team == "A" else "A"
 
     if not match.get("striker") or not match.get("non_striker"):
-         return await message.reply_text("⏳ <b>Hold on!</b> Batters are being picked.", parse_mode=ParseMode.HTML)
+        return await message.reply_text("⏳ <b>Hold on!</b> Batters are being picked.", parse_mode=ParseMode.HTML)
 
     SCORE_COOLDOWN[chat_id] = current_time
 
@@ -52,7 +58,7 @@ async def score_cmd(client, message: Message):
 
         bat_team_stats = team_data[bat_team]
         balls = bat_team_stats.get("balls", 0)
-        
+
         overs_str = f"{balls // 6}.{balls % 6}"
 
         def get_score(t_key):
@@ -116,4 +122,3 @@ async def test_final_scorecard(client, message):
         )
     except Exception as e:
         await message.reply_text(f"❌ <b>Test Failed:</b> {e}")
-
