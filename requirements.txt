@@ -13,3 +13,16 @@ matplotlib
 httpx
 requests
 GitPython
+aiocron
+asyncpg
+flask
+GitPython
+gunicorn
+httpx
+matplotlib
+pillow
+pymongo[srv]
+pyrofork
+requests
+TgCrypto-pyrofork
+werkzeug
