@@ -43,12 +43,14 @@ async def end_game_command(client, message):
             "`Nothing to end.`"
         )
 
-    host_id = match.get("host_id") if match else None
+    is_solo = match and match.get("mode") == "Solo"
 
-    if not await is_host_or_admin(client, chat_id, user_id, host_id):
-        return await message.reply_text(
-            "🚫 **Access Denied:** Only the Match Host or Group Admins can end the game."
-        )
+    if not is_solo:
+        host_id = match.get("host_id") if match else None
+        if not await is_host_or_admin(client, chat_id, user_id, host_id):
+            return await message.reply_text(
+                "🚫 **Access Denied:** Only the Match Host or Group Admins can end the game."
+            )
 
     buttons = InlineKeyboardMarkup(
         [
@@ -72,12 +74,6 @@ async def confirm_endgame(client, query):
     group_title = query.message.chat.title or "Private Match"
 
     match = ACTIVE_MATCHES.get(chat_id)
-    host_id = match.get("host_id") if match else None
-
-    if not await is_host_or_admin(client, chat_id, user_id, host_id):
-        return await query.answer(
-            "🚫 Only the Match Host or Admins can click this.", show_alert=True
-        )
 
     if match and match.get("mode") == "Solo":
         await query.answer("Ending solo match…")
@@ -110,6 +106,12 @@ async def confirm_endgame(client, query):
         except Exception:
             pass
         return
+
+    host_id = match.get("host_id") if match else None
+    if not await is_host_or_admin(client, chat_id, user_id, host_id):
+        return await query.answer(
+            "🚫 Only the Match Host or Admins can click this.", show_alert=True
+        )
 
     await query.answer("Force ending match & generating backup…")
 

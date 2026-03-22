@@ -200,11 +200,6 @@ async def leave_solo_game(client, message):
     if user.id not in match["players"]:
         return await message.reply_text("You're not in the lobby.")
 
-    if user.id == match["host_id"]:
-        return await message.reply_text(
-            "👑 You are the host. Use /endgame to cancel the match."
-        )
-
     match["players"].remove(user.id)
     match["user_cache"].pop(user.id, None)
     match["player_stats"].pop(user.id, None)

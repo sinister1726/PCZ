@@ -310,10 +310,12 @@ async def _solo_members(client, message, match):
         name = user_cache.get(uid, "Player")
         tag = ""
         if uid == current_batter:
-            tag = " 🏏"
+            tag = " 🏏 batting"
         elif uid == current_bowler:
-            tag = " ⚾"
-        player_lines.append(f"@{name}" if "@" not in name else name + tag)
+            tag = " ⚾ bowling"
+        label = f"@{name}" if "@" not in name else name
+        label += tag
+        player_lines.append(label)
 
     if not player_lines:
         player_lines = ["No players yet"]
@@ -322,7 +324,6 @@ async def _solo_members(client, message, match):
         "👤 <b>Solo Players</b>\n\n"
         + "\n".join(player_lines)
         + f"\n\n📍 <b>Status:</b> {status}"
-        + f"\n👑 <b>Host:</b> {match.get('host_name', 'Host')}"
     )
 
     refresh_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refresh", callback_data="refresh_members")]])
