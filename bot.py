@@ -8,6 +8,14 @@ from database.migrate import migrate
 
 LOG_CHANNEL = -1003692127639
 
+
+async def _db_watchdog():
+    while True:
+        await asyncio.sleep(15)
+        if not db.pool:
+            print("🔌 DB watchdog: pool is gone, reconnecting…")
+            await db.connect(retries=5, delay=3.0)
+
 async def initialize_database():
     await db.connect()
     await migrate()
@@ -66,6 +74,9 @@ async def start_nexora():
     for m in ACTIVE_MATCHES.values():
         if not m.get("client"):
             m["client"] = bot
+
+    asyncio.create_task(_db_watchdog())
+    print("🔌 Database watchdog active.")
 
     from plugins.game.team.cleanup import auto_clean_matches
     asyncio.create_task(auto_clean_matches(bot))
