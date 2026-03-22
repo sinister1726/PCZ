@@ -2,7 +2,7 @@ import asyncio
 import time
 import uuid
 from pyrogram import Client, filters
-from pyrogram.enums import ParseMode
+from pyrogram.enums import ParseMode, ChatMemberStatus
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.connection import db
@@ -15,6 +15,7 @@ from plugins.game.team import ACTIVE_MATCHES
 from Assets.files import MEMBERS_IMAGE
 
 SOLO_JOIN_SECONDS = 120
+MIN_PLAYERS = 3
 
 
 def _fresh_player_stats():
@@ -40,27 +41,34 @@ async def _ensure_user_exists(conn, user):
     )
 
 
+async def _is_admin(client, chat_id, user_id):
+    try:
+        member = await client.get_chat_member(chat_id, user_id)
+        return member.status in (ChatMemberStatus.OWNER, ChatMemberStatus.ADMINISTRATOR)
+    except Exception:
+        return False
+
+
 @Client.on_callback_query(filters.regex("^mode_solo$"))
 async def solo_mode_selected(client, query):
     await query.answer()
     chat_id = query.message.chat.id
     user = query.from_user
 
-    # fast parallel validation
     existing, other = await asyncio.gather(
         get_active_game(chat_id),
         user_in_other_game(user.id, chat_id),
     )
 
     if existing:
-        return await query.answer("⚠️ A game is already running in this group.", show_alert=True)
+        return await query.answer("⚠️ A game is already running here.", show_alert=True)
     if other:
-        return await query.answer(f"⚠️ You are already in another game.", show_alert=True)
+        return await query.answer("⚠️ You are already in another game.", show_alert=True)
 
     game_id = uuid.uuid4()
     group_title = query.message.chat.title or "Cricket Arena"
+    join_ends_at = time.time() + SOLO_JOIN_SECONDS
 
-    # Build match state immediately — don't wait for DB
     ACTIVE_MATCHES[chat_id] = {
         "chat_id": chat_id,
         "game_id": game_id,
@@ -84,6 +92,7 @@ async def solo_mode_selected(client, query):
         "batted": False,
         "last_bowl": None,
         "prompt_dispatched": False,
+        "join_ends_at": join_ends_at,
         "join_timer_task": None,
         "timeouts": {
             "bowler": {"fails": 0, "task": None},
@@ -94,7 +103,6 @@ async def solo_mode_selected(client, query):
     }
     match = ACTIVE_MATCHES[chat_id]
 
-    # Edit message immediately, DB write runs in background
     try:
         await query.message.edit_caption(
             caption=(
@@ -103,23 +111,20 @@ async def solo_mode_selected(client, query):
                 "📢 Join using <code>/joingame</code>\n"
                 "📤 Leave using <code>/leave</code>\n"
                 f"⏳ Lobby closes in <b>{SOLO_JOIN_SECONDS // 60} minutes</b>.\n"
-                "⚡ Minimum <b>3 players</b> required to start."
+                "⚡ Minimum <b>3 players</b> required to start.\n\n"
+                "🔧 Admins: <code>/extend 30</code> | <code>/forcestart</code>"
             ),
             parse_mode=ParseMode.HTML,
         )
     except Exception:
         await client.send_message(
             chat_id,
-            "👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘 𝗦𝗘𝗟𝗘𝗖𝗧𝗘𝗗</b>\n\n"
-            "📢 Join via <code>/joingame</code> | Leave via <code>/leave</code>\n"
-            f"⏳ Lobby closes in <b>{SOLO_JOIN_SECONDS // 60} minutes</b>.",
+            "👤 <b>𝗦𝗢𝗟𝗢 𝗠𝗢𝗗𝗘</b> — Join via <code>/joingame</code>\n"
+            f"⏳ Closes in {SOLO_JOIN_SECONDS // 60} min | Min 3 players",
             parse_mode=ParseMode.HTML,
         )
 
-    # Start join timer
     match["join_timer_task"] = asyncio.create_task(_solo_join_timer(client, chat_id))
-
-    # DB write in background
     asyncio.create_task(_create_solo_game_db(game_id, chat_id, group_title, user))
 
 
@@ -133,7 +138,8 @@ async def _create_solo_game_db(game_id, chat_id, group_title, user):
             )
             await _ensure_user_exists(conn, user)
             await conn.execute(
-                "INSERT INTO game_players (game_id, user_id, team) VALUES ($1, $2, 'solo') ON CONFLICT DO NOTHING",
+                "INSERT INTO game_players (game_id, user_id, team) "
+                "VALUES ($1, $2, 'S') ON CONFLICT DO NOTHING",
                 game_id, user.id,
             )
     except Exception as e:
@@ -167,12 +173,13 @@ async def join_solo_game(client, message):
     match["username_cache"][user.id] = user.username or user.first_name or "Player"
     match["player_stats"][user.id] = _fresh_player_stats()
 
-    # DB write in background
     asyncio.create_task(_join_solo_game_db(match["game_id"], user))
 
     count = len(match["players"])
+    needed = max(0, MIN_PLAYERS - count)
+    suffix = f" — {needed} more needed!" if needed > 0 else " — ready to start! ✅"
     await message.reply_text(
-        f"✅ <b>{user.first_name}</b> joined! ({count} player{'s' if count != 1 else ''})",
+        f"✅ <b>{user.first_name}</b> joined! ({count} player{'s' if count != 1 else ''}){suffix}",
         parse_mode=ParseMode.HTML,
     )
 
@@ -182,7 +189,8 @@ async def _join_solo_game_db(game_id, user):
         async with db.acquire() as conn:
             await _ensure_user_exists(conn, user)
             await conn.execute(
-                "INSERT INTO game_players (game_id, user_id, team) VALUES ($1, $2, 'solo') ON CONFLICT DO NOTHING",
+                "INSERT INTO game_players (game_id, user_id, team) "
+                "VALUES ($1, $2, 'S') ON CONFLICT DO NOTHING",
                 game_id, user.id,
             )
     except Exception as e:
@@ -229,43 +237,155 @@ async def _leave_solo_game_db(game_id, user_id):
         print(f"Solo leave DB (bg) error: {e}")
 
 
-async def _solo_join_timer(client, chat_id):
+@Client.on_message(filters.command("extend") & filters.group)
+async def extend_solo_lobby(client, message):
+    chat_id = message.chat.id
+    user = message.from_user
+    match = ACTIVE_MATCHES.get(chat_id)
+
+    if not match or match.get("mode") != "Solo":
+        return await message.reply_text("❌ No solo lobby to extend.")
+
+    if match.get("phase") != "SOLO_JOIN":
+        return await message.reply_text("❌ Game already started.")
+
+    if not await _is_admin(client, chat_id, user.id):
+        return await message.reply_text("🚫 Admins only.")
+
+    args = message.text.split()
     try:
-        half = SOLO_JOIN_SECONDS // 2
-        await asyncio.sleep(half)
+        extra = int(args[1]) if len(args) > 1 else 30
+        extra = max(10, min(extra, 300))  # clamp 10–300 seconds
+    except (ValueError, IndexError):
+        extra = 30
 
-        match = ACTIVE_MATCHES.get(chat_id)
-        if not match or match.get("phase") != "SOLO_JOIN":
-            return
+    old_ends = match.get("join_ends_at", time.time())
+    match["join_ends_at"] = old_ends + extra
 
-        count = len(match["players"])
-        await client.send_message(
-            chat_id,
-            f"⏳ <b>1 minute left</b> to join!\nPlayers so far: <b>{count}</b>\n📢 /joingame",
+    # Cancel old timer and restart from remaining deadline
+    old_task = match.get("join_timer_task")
+    if old_task and not old_task.done():
+        old_task.cancel()
+
+    match["join_timer_task"] = asyncio.create_task(_solo_join_timer(client, chat_id))
+
+    remaining = int(match["join_ends_at"] - time.time())
+    await message.reply_text(
+        f"⏰ <b>Lobby extended by {extra}s!</b>\n"
+        f"⏳ New time remaining: <b>{remaining}s</b>",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@Client.on_message(filters.command("forcestart") & filters.group)
+async def forcestart_solo(client, message):
+    chat_id = message.chat.id
+    user = message.from_user
+    match = ACTIVE_MATCHES.get(chat_id)
+
+    if not match or match.get("mode") != "Solo":
+        return await message.reply_text("❌ No solo lobby to force-start.")
+
+    if match.get("phase") != "SOLO_JOIN":
+        return await message.reply_text("❌ Game already started.")
+
+    if not await _is_admin(client, chat_id, user.id):
+        return await message.reply_text("🚫 Admins only.")
+
+    count = len(match["players"])
+    if count < MIN_PLAYERS:
+        return await message.reply_text(
+            f"❌ <b>Not enough players!</b>\n"
+            f"You have <b>{count}</b>, need at least <b>{MIN_PLAYERS}</b>.\n"
+            "Tell more people to /joingame!",
             parse_mode=ParseMode.HTML,
         )
 
-        await asyncio.sleep(SOLO_JOIN_SECONDS - half - 10)
+    # Cancel the join timer so it doesn't trigger again
+    old_task = match.get("join_timer_task")
+    if old_task and not old_task.done():
+        old_task.cancel()
 
+    await message.reply_text(
+        f"⚡ <b>Force starting with {count} players!</b>",
+        parse_mode=ParseMode.HTML,
+    )
+    await start_solo_game(client, chat_id)
+
+
+async def _solo_join_timer(client, chat_id):
+    """Deadline-based join timer. Reads match['join_ends_at'] dynamically so /extend works."""
+    try:
+        while True:
+            match = ACTIVE_MATCHES.get(chat_id)
+            if not match or match.get("phase") != "SOLO_JOIN":
+                return
+
+            now = time.time()
+            deadline = match.get("join_ends_at", now)
+            remaining = deadline - now
+
+            if remaining <= 0:
+                break
+
+            if remaining > 60:
+                # Sleep until 60s before deadline
+                await asyncio.sleep(remaining - 60)
+                match = ACTIVE_MATCHES.get(chat_id)
+                if not match or match.get("phase") != "SOLO_JOIN":
+                    return
+                remaining = match["join_ends_at"] - time.time()
+                if remaining > 0:
+                    try:
+                        await client.send_message(
+                            chat_id,
+                            f"⏳ <b>1 minute left</b> to join!\n"
+                            f"Players: <b>{len(match['players'])}</b> | "
+                            f"Need: <b>{MIN_PLAYERS}</b>\n📢 /joingame",
+                            parse_mode=ParseMode.HTML,
+                        )
+                    except Exception:
+                        pass
+
+            elif remaining > 10:
+                # Sleep until 10s before deadline
+                await asyncio.sleep(remaining - 10)
+                match = ACTIVE_MATCHES.get(chat_id)
+                if not match or match.get("phase") != "SOLO_JOIN":
+                    return
+                remaining = match["join_ends_at"] - time.time()
+                if remaining > 0:
+                    try:
+                        await client.send_message(
+                            chat_id,
+                            f"⚠️ <b>10 seconds left!</b> Last chance → /joingame",
+                            parse_mode=ParseMode.HTML,
+                        )
+                    except Exception:
+                        pass
+
+            else:
+                # In the final 10s, just sleep the rest
+                await asyncio.sleep(max(0.5, remaining))
+                break
+
+        # Final check at deadline
         match = ACTIVE_MATCHES.get(chat_id)
         if not match or match.get("phase") != "SOLO_JOIN":
             return
 
-        await client.send_message(
-            chat_id, "⚠️ <b>10 seconds left!</b> Last chance to /joingame", parse_mode=ParseMode.HTML
-        )
-
-        await asyncio.sleep(10)
-
-        match = ACTIVE_MATCHES.get(chat_id)
-        if not match or match.get("phase") != "SOLO_JOIN":
+        # One last check if deadline was extended while we were in the final sleep
+        if match["join_ends_at"] - time.time() > 2:
+            # Deadline was extended — restart timer
+            match["join_timer_task"] = asyncio.create_task(_solo_join_timer(client, chat_id))
             return
 
         count = len(match["players"])
-        if count < 3:
+        if count < MIN_PLAYERS:
             await client.send_message(
                 chat_id,
-                f"❌ <b>Game Cancelled!</b>\nOnly <b>{count}</b> joined. Need at least <b>3</b>.",
+                f"❌ <b>Game Cancelled!</b>\n"
+                f"Only <b>{count}</b> joined. Need at least <b>{MIN_PLAYERS}</b>.",
                 parse_mode=ParseMode.HTML,
             )
             ACTIVE_MATCHES.pop(chat_id, None)
@@ -302,7 +422,6 @@ async def start_solo_game(client, chat_id):
         f"{i+1}. {user_cache.get(uid, 'Player')}" for i, uid in enumerate(players)
     )
 
-    # DB update in background
     asyncio.create_task(_update_game_phase_db(chat_id, "LIVE"))
 
     await client.send_message(
