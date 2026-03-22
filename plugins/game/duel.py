@@ -18,13 +18,13 @@ QUEUE_TIMEOUT = 120
 
 BALL_BUTTONS = InlineKeyboardMarkup([
     [
-        InlineKeyboardButton("0️⃣", callback_data="duel_pick:0"),
         InlineKeyboardButton("1️⃣", callback_data="duel_pick:1"),
         InlineKeyboardButton("2️⃣", callback_data="duel_pick:2"),
+        InlineKeyboardButton("3️⃣", callback_data="duel_pick:3"),
     ],
     [
-        InlineKeyboardButton("3️⃣", callback_data="duel_pick:3"),
         InlineKeyboardButton("4️⃣", callback_data="duel_pick:4"),
+        InlineKeyboardButton("5️⃣", callback_data="duel_pick:5"),
         InlineKeyboardButton("6️⃣", callback_data="duel_pick:6"),
     ],
 ])
@@ -36,11 +36,11 @@ DUEL_INTROS = [
 ]
 
 RUN_COMMENTS = {
-    0: ["Defended! Dot ball 🛡️", "Tight delivery — nothing off it.", "Blocked! 0 off that."],
-    1: ["Quick single! Strike rotated ✅", "Nudged away for one.", "Sharp running — one run!"],
+    1: ["Quick single! Strike rotated.", "Nudged away for one.", "Sharp running — one run!"],
     2: ["Placed nicely — two runs! 🏃", "Easy two off that.", "Good placement, two runs!"],
     3: ["Three! Brave running 💨", "Pushed to deep — three runs!", "Risky but rewarding!"],
     4: ["FOUR! 🔥 Raced to the fence!", "BOUNDARY! Lovely shot 🎯", "Cracked through covers — FOUR!"],
+    5: ["Five runs! Chaos in the field 😵", "Overthrows! They steal five! 🏃‍♂️", "Misfield madness — five runs!"],
     6: ["SIX! 🚀 Gone into the stands!", "MAXIMUM! 💥 What a hit!", "MONSTROUS! That's in orbit! 🌌"],
 }
 
@@ -112,14 +112,14 @@ async def _send_ball_prompt(client, match):
 
     bat_txt = (
         f"🏏 <b>Your Turn — BATTING</b>\n"
-        f"👤 <b>{html.escape(batter_name)}</b>: {score} ({balls}b)\n\n"
+        f" ❖ <b>{html.escape(batter_name)}</b>: {score} ({balls}b)\n\n"
         f"Pick your shot number 👇\n"
         f"<i>Tip: If your number matches the bowler's — OUT!</i>"
     )
 
     bowl_txt = (
         f"🎯 <b>Your Turn — BOWLING</b>\n"
-        f"🎳 Bowling to <b>{html.escape(batter_name)}</b>: {score} ({balls}b)\n\n"
+        f" ❖ Bowling to <b>{html.escape(batter_name)}</b>: {score} ({balls}b)\n\n"
         f"Pick your delivery number 👇\n"
         f"<i>Tip: Match the batter's number to take a wicket!</i>"
     )
@@ -129,7 +129,7 @@ async def _send_ball_prompt(client, match):
         bat_txt = (
             f"🏏 <b>Your Turn — BATTING</b>\n"
             f"👤 <b>{html.escape(batter_name)}</b>: {score} ({balls}b)\n"
-            f"🎯 Target: <b>{target}</b> runs\n\n"
+            f"➥ Target: <b>{target}</b> runs\n\n"
             f"Pick your shot number 👇"
         )
 
@@ -254,13 +254,11 @@ async def _end_duel(client, match, winner):
         loser_score = match["a_score"]
 
     result_text = (
-        f"🏆 <b>DUEL OVER!</b>\n"
-        "────┈┄┄╌╌╌╌┄┄┈────\n\n"
+        f" ❖ <b>DUEL OVER!</b>\n\n"
         f"🥇 <b>WINNER:</b> {html.escape(winner_name)}\n"
-        f"🏏 Score: <b>{winner_score}</b> runs\n\n"
+        f"➥ Score: <b>{winner_score}</b> runs\n\n"
         f"😔 <b>Defeated:</b> {html.escape(loser_name)}\n"
-        f"🏏 Score: <b>{loser_score}</b> runs\n\n"
-        "────┈┄┄╌╌╌╌┄┄┈────\n"
+        f"➥ Score: <b>{loser_score}</b> runs\n\n"
         "🎮 GG! Play again in your group with /start"
     )
 
@@ -430,11 +428,9 @@ async def duel_ready(client, query):
         intro = random.choice(DUEL_INTROS)
         start_text = (
             f"{intro}\n\n"
-            "────┈┄┄╌╌╌╌┄┄┈────\n"
-            f"🏏 <b>Batting First:</b> {html.escape(name_a)}\n"
-            f"🎯 <b>Bowling First:</b> {html.escape(name_b)}\n"
-            "────┈┄┄╌╌╌╌┄┄┈────\n"
-            "📜 <b>Rules:</b> Pick a number. If it <b>matches</b> the opponent's — <b>OUT!</b> Otherwise batter scores their number.\n\n"
+            f"➥ <b>Batting First:</b> {html.escape(name_a)}\n"
+            f"➥ <b>Bowling First:</b> {html.escape(name_b)}\n\n"
+            "📜 <b>Rules:</b> Pick a number. If it <b>matches</b> the opponent's — <b>OUT!</b> Otherwise batter scores their number.\n"
             "⚡ First ball in 3 seconds..."
         )
 
@@ -450,7 +446,7 @@ async def duel_ready(client, query):
 
         try:
             await query.message.edit_text(
-                "🔍 <b>Searching for an opponent...</b>\n\n"
+                "🔍 <b>Searching for an opponent...</b>\n"
                 "⏱️ Auto-cancels in 2 minutes if no one joins.\n"
                 "Share /start in your group to find opponents faster!",
                 parse_mode=ParseMode.HTML
@@ -492,7 +488,7 @@ async def duel_pick(client, query):
             await query.answer("Already picked! Waiting for batter...", show_alert=False)
             return
         match["pending_bowl_choice"] = pick
-        await query.answer(f"🎯 You chose {pick}! Waiting for batter...")
+        await query.answer(f" ❖ You chose {pick}! Waiting for batter...")
     else:
         await query.answer("Not your turn!", show_alert=True)
         return
@@ -509,7 +505,7 @@ async def duel_pick(client, query):
 def get_duel_matchmaking_card():
     text = (
         "⚔️ <b>1v1 DUEL MODE</b>\n"
-        "────┈┄┄╌╌╌╌┄┄┈────\n\n"
+        "≪━─━─━─◈─━─━─━≫\n\n"
         "🏏 Play a head-to-head duel!\n\n"
         "📜 <b>How it works:</b>\n"
         "➥ Both players pick a number each ball\n"
