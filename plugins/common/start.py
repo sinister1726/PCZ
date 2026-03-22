@@ -20,6 +20,14 @@ async def start_cmd(client: Client, message):
     first_name = user.first_name or "Captain"
 
     is_new = await add_user(user.id, first_name)
+
+    args = message.command[1] if len(message.command) > 1 else ""
+    if args == "duel":
+        from plugins.game.duel import get_duel_matchmaking_card
+        text, buttons = get_duel_matchmaking_card()
+        await message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=buttons)
+        return
+
     mood = random.choice(START_MOODS)
 
     caption = (

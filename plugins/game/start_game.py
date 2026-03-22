@@ -22,6 +22,9 @@ async def start_game(client, message):
                 InlineKeyboardButton("👤 Solo", callback_data="mode_solo"),
             ],
             [
+                InlineKeyboardButton("⚔️ 1v1 Duel", callback_data="mode_duel"),
+            ],
+            [
                 InlineKeyboardButton("✖ Cancel", callback_data="mode_cancel")
             ]
         ]
@@ -31,7 +34,8 @@ async def start_game(client, message):
         photo=START_IMAGE_GROUP,
         caption=(
             "🎮 <b>SELECT MODE</b>\n"
-            "Choose how you want to play today 👇"
+            "Choose how you want to play today 👇\n\n"
+            "⚔️ <i>1v1 Duel — tap to open bot DM and queue!</i>"
         ),
         parse_mode=ParseMode.HTML,
         reply_markup=buttons
@@ -44,13 +48,16 @@ async def cancel_start(client, query):
 
 @Client.on_callback_query(filters.regex("^mode_back$"))
 async def back_to_start(client, query):
-    await query.answer() 
-    
-    buttons = InlineKeyboardMarkup(
+    await query.answer()
+
+    back_buttons = InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton("🏏 Team", callback_data="mode_team"),
                 InlineKeyboardButton("👤 Solo", callback_data="mode_solo"),
+            ],
+            [
+                InlineKeyboardButton("⚔️ 1v1 Duel", callback_data="mode_duel"),
             ],
             [
                 InlineKeyboardButton("✖ Cancel", callback_data="mode_cancel")
@@ -62,9 +69,13 @@ async def back_to_start(client, query):
         await query.message.edit_media(
             media=InputMediaPhoto(
                 media=START_IMAGE_GROUP,
-                caption="🎮 **𝗦𝗘𝗟𝗘𝗖𝗧 𝗠𝗢𝗗𝗘**\n`Choose how to play.`"
+                caption=(
+                    "🎮 <b>SELECT MODE</b>\n"
+                    "Choose how you want to play today 👇\n\n"
+                    "⚔️ <i>1v1 Duel — tap to open bot DM and queue!</i>"
+                )
             ),
-            reply_markup=buttons
+            reply_markup=back_buttons
         )
     except MessageNotModified:
         pass

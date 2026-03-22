@@ -66,4 +66,21 @@ async def migrate():
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_players_user ON game_players(user_id);")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_players_game ON game_players(game_id);")
 
+        await conn.execute("ALTER TABLE user_stats ADD COLUMN IF NOT EXISTS recent_form TEXT DEFAULT '';")
+        await conn.execute("ALTER TABLE user_stats ADD COLUMN IF NOT EXISTS last_played_at TIMESTAMP;")
+
+        await conn.execute("""
+        CREATE TABLE IF NOT EXISTS duel_stats (
+            user_id BIGINT PRIMARY KEY,
+            matches INT DEFAULT 0,
+            wins INT DEFAULT 0,
+            losses INT DEFAULT 0,
+            runs INT DEFAULT 0,
+            wickets INT DEFAULT 0,
+            highest_score INT DEFAULT 0,
+            ducks INT DEFAULT 0
+        );
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_duel_stats_wins ON duel_stats(wins DESC);")
+
         print("✅ Database migration complete. All tables and career milestones are ready.")

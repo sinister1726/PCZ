@@ -191,22 +191,45 @@ def _design_stadium(av1, av2, n1, n2, score1, score2, rows):
     ov = Image.new("RGBA", (CW, CH), (0, 0, 0, 0))
     d = ImageDraw.Draw(ov)
 
-    def poly(pts, c, a):
-        d.polygon(pts, fill=c + (a,))
+    def poly(pts, c, a=None):
+        if a is None:
+            if len(c) == 4:
+                d.polygon(pts, fill=c)
+            else:
+                raise ValueError("Alpha missing for RGB color")
+        else:
+            d.polygon(pts, fill=c + (a,))
+
 
     for i in range(6):
         ox = i * 60
-        poly([(ox, 0), (ox + 100, 0), (ox - 90, CH), (ox - 150, CH)], C1, 16 - i * 2)
+        poly(
+            [(ox, 0), (ox + 100, 0), (ox - 90, CH), (ox - 150, CH)],
+            C1,
+            max(0, 16 - i * 2)
+        )
 
     for i in range(6):
         ox = CW - i * 60
-        poly([(ox, 0), (ox - 100, 0), (ox + 90, CH), (ox + 150, CH)], C2, 16 - i * 2)
+        poly(
+            [(ox, 0), (ox - 100, 0), (ox + 90, CH), (ox + 150, CH)],
+            C2,
+            max(0, 16 - i * 2)
+        )
 
-    d.ellipse([(CW // 2 - 280, 55), (CW // 2 + 280, 310)], fill=(12, 42, 12, 100), outline=(35, 110, 35, 50), width=2)
-    d.ellipse([(CW // 2 - 170, 85), (CW // 2 + 170, 280)], fill=(18, 58, 18, 70))
+    d.ellipse(
+        [(CW // 2 - 280, 55), (CW // 2 + 280, 310)],
+        fill=(12, 42, 12, 100),
+        outline=(35, 110, 35, 50),
+        width=2
+    )
+    d.ellipse(
+        [(CW // 2 - 170, 85), (CW // 2 + 170, 280)],
+        fill=(18, 58, 18, 70)
+    )
 
-    poly([(0, 0), (CW, 0), (CW, 68), (0, 78)], (8, 13, 8, 235))
-    poly([(0, CH - 62), (CW, CH - 50), (CW, CH), (0, CH)], (8, 13, 8, 235))
+    poly([(0, 0), (CW, 0), (CW, 68), (0, 78)], (8, 13, 8), 235)
+    poly([(0, CH - 62), (CW, CH - 50), (CW, CH), (0, CH)], (8, 13, 8), 235)
 
     card.paste(ov, mask=ov.split()[3])
 
@@ -214,6 +237,7 @@ def _design_stadium(av1, av2, n1, n2, score1, score2, rows):
     _paste_avatar(card, av2, CW - 155, 198, size=130, ring_rgb=C2[:3])
 
     d2 = ImageDraw.Draw(card)
+
     d2.text((CW // 2, 195), "VS", fill=(255, 215, 0), font=_font(50), anchor="mm")
     d2.text((CW // 2, 22), "🏟  CRICKET CLASH", fill=(200, 240, 200), font=_font(22), anchor="mm")
     d2.text((CW // 2, 50), "NEXORA STADIUM", fill=(55, 100, 55), font=_font(13), anchor="mm")
@@ -236,13 +260,13 @@ def _design_stadium(av1, av2, n1, n2, score1, score2, rows):
         vt, vc = f"💧  {n2_short} WINS THE CLASH", C2
     else:
         vt, vc = "⚖️  PERFECT TIE — INCREDIBLE!", (200, 255, 200)
+
     d2.text((CW // 2, CH - 28), vt, fill=vc, font=_font(19), anchor="mm")
 
     buf = io.BytesIO()
     card.convert("RGB").save(buf, format="JPEG", quality=94)
     buf.seek(0)
     return buf
-
 
 def _design_battle_clash(av1, av2, n1, n2, score1, score2, rows):
     C1 = (190, 30, 255)

@@ -350,6 +350,19 @@ async def _save_solo_stats(match):
                     uid, is_out, runs, wickets, b_faced, b_bowled,
                     r_conceded, fours, sixes, is_100, is_50, is_duck,
                 )
+
+            top_scorer_id = max(stats.items(), key=lambda x: x[1].get("runs", 0), default=(None, {}))[0]
+            for uid, p in stats.items():
+                form_char = 'W' if uid == top_scorer_id else 'L'
+                await conn.execute(
+                    """
+                    UPDATE user_stats
+                    SET recent_form = LEFT($1 || COALESCE(recent_form, ''), 5),
+                        last_played_at = NOW()
+                    WHERE user_id = $2
+                    """,
+                    form_char, uid
+                )
     except Exception as e:
         print(f"Solo stats save error: {e}")
 

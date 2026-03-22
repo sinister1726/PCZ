@@ -125,6 +125,24 @@ def calculate_title(stats):
 
 LOADING_STICKER = "CAACAgUAAxkBAALPAmm6Mnqzn153LcLGy-QexrqQakTqAAK1CQAC6b85V0ohe3zS5QecHgQ"
 
+
+def _format_form(recent_form: str) -> str:
+    mapping = {'W': '🟢', 'L': '🔴'}
+    circles = [mapping.get(c, '⬜') for c in (recent_form or '')]
+    while len(circles) < 5:
+        circles.append('⬜')
+    return ' '.join(circles)
+
+
+def _profile_buttons(uid: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("🧬 Cricket DNA", callback_data=f"show_dna:{uid}"),
+            InlineKeyboardButton("⚔️ 1v1 Stats", callback_data=f"show_duel:{uid}"),
+        ]
+    ])
+
+
 @Client.on_message(filters.command(["userinfo", "profile", "userstats"]))
 async def userinfo(client, message):
     current_time = time.time()
@@ -188,6 +206,7 @@ async def userinfo(client, message):
     win_rate = (won / matches * 100) if matches > 0 else 0.0
     mister = calculate_title(stats)
     performance_score, tier = calculate_rank(stats)
+    form_display = _format_form(stats.get("recent_form", ""))
 
     caption = (
         f"🏏 <b>𝗖𝗔𝗥𝗘𝗘𝗥 𝗣𝗥𝗢𝗙𝗜𝗟𝗘</b>\n"
@@ -195,6 +214,7 @@ async def userinfo(client, message):
         f"🎖️ <b>Tier:</b> {tier}\n"
         f"🧬 <b>Title:</b> {mister}\n"
         f"🆔 <b>ID:</b> <code>{uid}</code>\n"
+        f"📊 <b>Form:</b> {form_display}\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n\n"
         "📊 <b>𝗢𝗩𝗘𝗥𝗔𝗟𝗟 𝗦𝗧𝗔𝗧𝗦</b>\n"
         f"🎮 Matches: {matches}\n"
@@ -234,7 +254,7 @@ async def userinfo(client, message):
             except Exception:
                 pass
 
-        await message.reply_photo(photo=card_buf, caption=caption, parse_mode=ParseMode.HTML)
+        await message.reply_photo(photo=card_buf, caption=caption, parse_mode=ParseMode.HTML, reply_markup=_profile_buttons(uid))
 
     except Exception as e:
         if sticker_msg:
@@ -242,7 +262,7 @@ async def userinfo(client, message):
                 await sticker_msg.delete()
             except Exception:
                 pass
-        await message.reply_photo(photo=PROFILE_IMG, caption=caption, parse_mode=ParseMode.HTML)
+        await message.reply_photo(photo=PROFILE_IMG, caption=caption, parse_mode=ParseMode.HTML, reply_markup=_profile_buttons(uid))
 
 CATEGORIES = {
     "runs": ("🏏 Most Runs", "runs"),
@@ -372,4 +392,217 @@ async def rank_main_menu(client, query: CallbackQuery):
     text = await get_home_text(query.from_user)
     try: await query.message.edit_caption(caption=text, reply_markup=get_main_menu())
     except: await query.message.edit_text(text, reply_markup=get_main_menu())
-    
+
+
+@Client.on_callback_query(filters.regex("^show_dna:"))
+async def show_dna_callback(client, query: CallbackQuery):
+    await query.answer()
+    uid = int(query.data.split(":")[1])
+
+    from utils.dbpass import safe_fetchrow
+    from plugins.utilities.personality import get_personality, DNA_PROFILES
+
+    try:
+        stats = await safe_fetchrow("SELECT * FROM user_stats WHERE user_id=$1", uid)
+    except Exception:
+        await query.answer("DB error, try again.", show_alert=True)
+        return
+
+    try:
+        target = await client.get_users(uid)
+        display_name = target.first_name
+    except Exception:
+        display_name = "Player"
+
+    if not stats:
+        text = (
+            "🧬 <b>Cricket DNA</b>\n\n"
+            "🍀 <b>Lucky Charm</b>\n"
+            "<i>Play some matches to unlock your DNA!</i>"
+        )
+    else:
+        dna = get_personality(dict(stats))
+        info = DNA_PROFILES[dna]
+        runs = int(stats.get("runs") or 0)
+        wickets = int(stats.get("wickets") or 0)
+        matches = int(stats.get("matches") or 0)
+        wins = int(stats.get("wins") or 0)
+        balls_faced = int(stats.get("balls_faced") or 0)
+        balls_bowled = int(stats.get("balls_bowled") or 0)
+        runs_conceded = int(stats.get("runs_conceded") or 0)
+        sixes = int(stats.get("sixes") or 0)
+        centuries = int(stats.get("centuries") or 0)
+        moms = int(stats.get("moms") or 0)
+
+        sr = f"{runs / balls_faced * 100:.1f}" if balls_faced > 0 else "—"
+        eco = f"{runs_conceded / (balls_bowled / 6):.2f}" if balls_bowled > 0 else "—"
+        wr = f"{wins / max(matches, 1) * 100:.0f}%"
+
+        text = (
+            f"🧬 <b>Cricket DNA ❖ {display_name}</b>\n"
+            "────┈┄┄╌╌╌╌┄┄┈────\n\n"
+            f"{info['color']} <b>{dna}</b>\n"
+            f"<i>{info['tagline']}</i>\n\n"
+            f"⚡ <b>Trait:</b> {info['trait']}\n"
+            f"💡 <b>Tip:</b> {info['tip']}\n\n"
+            "📊 <b>Your Numbers:</b>\n"
+            f"➥ 🏃 Runs: <b>{runs}</b>  |  Wickets: <b>{wickets}</b>\n"
+            f"➥ ⚡ SR: <b>{sr}</b>  |  Eco: <b>{eco}</b>\n"
+            f"➥ 💯 Centuries: <b>{centuries}</b>  |  MOMs: <b>{moms}</b>\n"
+            f"➥ 🔥 Sixes: <b>{sixes}</b>  |  Win Rate: <b>{wr}</b>\n\n"
+            "────┈┄┄╌╌╌╌┄┄┈────\n"
+            "✨ <i>DNA evolves with every match you play.</i>"
+        )
+
+    back_btn = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔙 Back to Profile", callback_data=f"back_profile:{uid}")]
+    ])
+
+    try:
+        await query.message.edit_caption(caption=text, parse_mode=ParseMode.HTML, reply_markup=back_btn)
+    except Exception:
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_btn)
+
+
+@Client.on_callback_query(filters.regex("^show_duel:"))
+async def show_duel_callback(client, query: CallbackQuery):
+    await query.answer()
+    uid = int(query.data.split(":")[1])
+
+    try:
+        async with db.pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT * FROM duel_stats WHERE user_id=$1", uid)
+    except Exception:
+        await query.answer("DB error, try again.", show_alert=True)
+        return
+
+    try:
+        target = await client.get_users(uid)
+        display_name = target.first_name
+    except Exception:
+        display_name = "Player"
+
+    if not row:
+        text = (
+            f"⚔️ <b>1v1 Duel Stats — {display_name}</b>\n\n"
+            "No duel matches played yet!\n"
+            "Use <b>⚔️ 1v1 Duel</b> from your group to challenge opponents."
+        )
+    else:
+        matches = int(row.get("matches") or 0)
+        wins = int(row.get("wins") or 0)
+        losses = int(row.get("losses") or 0)
+        runs = int(row.get("runs") or 0)
+        wickets = int(row.get("wickets") or 0)
+        highest = int(row.get("highest_score") or 0)
+        ducks = int(row.get("ducks") or 0)
+        wr = f"{wins / max(matches, 1) * 100:.1f}%"
+
+        text = (
+            f"⚔️ <b>1v1 Duel Stats</b>\n"
+            f"👤 <b>{display_name}</b>\n"
+            "────┈┄┄╌╌╌╌┄┄┈────\n\n"
+            f"🎮 Duels Played: <b>{matches}</b>\n"
+            f"🏆 Wins: <b>{wins}</b> | ❌ Losses: <b>{losses}</b>\n"
+            f"📈 Win Rate: <b>{wr}</b>\n\n"
+            f"🏏 Total Runs: <b>{runs}</b>\n"
+            f"🎯 Wickets Taken: <b>{wickets}</b>\n"
+            f"🔥 Highest Score: <b>{highest}</b>\n"
+            f"🦆 Ducks: <b>{ducks}</b>\n"
+            "────┈┄┄╌╌╌╌┄┄┈────\n"
+            "⚔️ <i>Duels sharpen your instincts!</i>"
+        )
+
+    back_btn = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔙 Back to Profile", callback_data=f"back_profile:{uid}")]
+    ])
+
+    try:
+        await query.message.edit_caption(caption=text, parse_mode=ParseMode.HTML, reply_markup=back_btn)
+    except Exception:
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_btn)
+
+
+@Client.on_callback_query(filters.regex("^back_profile:"))
+async def back_profile_callback(client, query: CallbackQuery):
+    await query.answer()
+    uid = int(query.data.split(":")[1])
+
+    from utils.dbpass import safe_fetchrow
+
+    try:
+        stats = await safe_fetchrow("SELECT * FROM user_stats WHERE user_id=$1", uid)
+    except Exception:
+        await query.answer("DB error.", show_alert=True)
+        return
+
+    if not stats:
+        await query.answer("No profile found.", show_alert=True)
+        return
+
+    try:
+        target = await client.get_users(uid)
+    except Exception:
+        await query.answer("User not found.", show_alert=True)
+        return
+
+    runs = int(stats.get("runs") or 0)
+    balls_faced = int(stats.get("balls_faced") or 0)
+    matches = int(stats.get("matches") or 0)
+    ducks = int(stats.get("ducks") or 0)
+    won = int(stats.get("wins") or 0)
+    lost = int(stats.get("losses") or 0)
+    wickets = int(stats.get("wickets") or 0)
+    balls_bowled = int(stats.get("balls_bowled") or 0)
+    runs_conceded = int(stats.get("runs_conceded") or 0)
+    moms = int(stats.get("moms") or 0)
+
+    out_count = matches - int(stats.get("not_outs") or 0)
+    bat_avg = runs / out_count if out_count > 0 else float(runs)
+    sr = (runs / balls_faced * 100) if balls_faced > 0 else 0.0
+    econ = (runs_conceded / (balls_bowled / 6)) if balls_bowled > 0 else 0.0
+    bowl_avg = (runs_conceded / wickets) if wickets > 0 else 0.0
+    bowl_sr = (balls_bowled / wickets) if wickets > 0 else 0.0
+    win_rate = (won / matches * 100) if matches > 0 else 0.0
+    mister = calculate_title(dict(stats))
+    performance_score, tier = calculate_rank(dict(stats))
+    form_display = _format_form(stats.get("recent_form", ""))
+
+    caption = (
+        f"🏏 <b>𝗖𝗔𝗥𝗘𝗘𝗥 𝗣𝗥𝗢𝗙𝗜𝗟𝗘</b>\n"
+        f"👤 <b>Player:</b> ⏤͟͞{target.first_name}\n"
+        f"🎖️ <b>Tier:</b> {tier}\n"
+        f"🧬 <b>Title:</b> {mister}\n"
+        f"🆔 <b>ID:</b> <code>{uid}</code>\n"
+        f"📊 <b>Form:</b> {form_display}\n"
+        "────┈┄┄╌╌╌╌┄┄┈────\n\n"
+        "📊 <b>𝗢𝗩𝗘𝗥𝗔𝗟𝗟 𝗦𝗧𝗔𝗧𝗦</b>\n"
+        f"🎮 Matches: {matches}\n"
+        f"🏆 Highest: {stats.get('highest_score', 0)}\n"
+        f"🏅 MOMs: {moms}\n"
+        f"📈 Performance: {performance_score}\n\n"
+        "🏏 <b>𝗕𝗔𝗧𝗧𝗜𝗡𝗚</b>\n"
+        f"🏃 Runs: {runs} | 📈 Avg: {bat_avg:.2f}\n"
+        f"⚡ S/R: {sr:.2f}\n"
+        f"💥 6s: {stats.get('sixes', 0)} • 4s: {stats.get('fours', 0)}\n"
+        f"🔥 100s: {stats.get('centuries', 0)} • 50s: {stats.get('fifties', 0)}\n"
+        f"🦆 Ducks: {ducks}\n\n"
+        "🎯 <b>𝗕𝗢𝗪𝗟𝗜𝗡𝗚</b>\n"
+        f"⚾ Wickets: {wickets}\n"
+        f"🎯 Econ: {econ:.2f} | 📈 Avg: {bowl_avg:.2f}\n"
+        f"⚡ S/R: {bowl_sr:.2f}\n"
+        f"🎩 Hat-Tricks: {stats.get('hat_tricks', 0)}\n\n"
+        "🧢 <b>𝗟𝗘𝗔𝗗𝗘𝗥𝗦𝗛𝗜𝗣</b>\n"
+        f"📈 Win Rate: {win_rate:.1f}%\n"
+        f"✅ Wins: {won} | ❌ Losses: {lost}\n\n"
+        "🤝 <b>𝗣𝗔𝗥𝗧𝗡𝗘𝗥𝗦𝗛𝗜𝗣</b>\n"
+        f"🏏 Best Partnership: {stats.get('best_partnership', 0)} runs\n"
+        "────┈┄┄╌╌╌╌┄┄┈────\n"
+        f"#CricketLegacy | {date.today()}"
+    )
+
+    try:
+        await query.message.edit_caption(caption=caption, parse_mode=ParseMode.HTML, reply_markup=_profile_buttons(uid))
+    except Exception:
+        await query.message.edit_text(caption, parse_mode=ParseMode.HTML, reply_markup=_profile_buttons(uid))
+

@@ -392,4 +392,16 @@ async def save_match_stats(match, winner_team):
                         partnership_runs, pid
                     )
 
+            for uid, p in players.items():
+                form_char = 'W' if p.get("team") == winner_team else 'L'
+                await conn.execute(
+                    """
+                    UPDATE user_stats
+                    SET recent_form = LEFT($1 || COALESCE(recent_form, ''), 5),
+                        last_played_at = NOW()
+                    WHERE user_id = $2
+                    """,
+                    form_char, uid
+                )
+
     print(f"✅ Match {game_id} full stats and milestones saved.")

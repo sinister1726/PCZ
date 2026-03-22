@@ -7,10 +7,22 @@ A Telegram bot for cricket-based group games with a Flask web log dashboard.
 - **bot.py** - Main Telegram bot entry point using Pyrogram/Pyrofork
 - **app.py** - Flask web dashboard for live log monitoring (runs on port 5000)
 - **plugins/** - Modular bot plugins (game, admin, common, utilities)
+  - **plugins/game/duel.py** - 1v1 DM-based duel mode with matchmaking queue
+  - **plugins/utilities/nudge.py** - Inactivity nudge background task
 - **database/** - PostgreSQL database layer using asyncpg
 - **utils/** - Shared utility functions
 - **config.py** - Centralized configuration (API keys, DB URL, bot settings)
 - **Assets/** - Static resources (fonts, images for scorecards)
+
+## Key Features
+
+- Team/Solo game modes in groups
+- **1v1 Duel mode** — button-only DM cricket, matchmaking queue with 2-min timeout
+- Form tracker — last 5 match results shown on profile (🟢🔴)
+- Personality button on profile — shows Cricket DNA by editing caption
+- 1v1 Stats button on profile — separate duel leaderboard
+- Inactivity nudge — DMs players after 3+ days idle
+- Career stats, rank tiers, achievements, best partnership tracking
 
 ## Technologies
 

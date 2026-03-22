@@ -86,6 +86,9 @@ async def start_nexora():
     asyncio.create_task(auto_clean_solo(bot))
     print("🧹 Solo Background Cleaner is active!")
 
+    from plugins.utilities.nudge import start_nudge_task
+    start_nudge_task(bot)
+
     await idle()
 
     print("🛑 Shutting down...")
