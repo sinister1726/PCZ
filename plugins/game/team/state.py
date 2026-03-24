@@ -226,13 +226,11 @@ async def bowler_dm_handler(client, message):
 
     await message.reply_text("⚾️", quote=True)
 
-    asyncio.create_task(
-        message.reply_text(
-            f"✅ <b>Ball Delivered:</b> <b>{message.text}</b>\n\n"
-            "Return to the group to watch the outcome unfold!",
-            reply_markup=back_btn,
-            parse_mode=ParseMode.HTML
-        )
+    await message.reply_text(
+        f"✅ <b>Ball Delivered:</b> <b>{message.text}</b>\n\n"
+        "Return to the group to watch the outcome unfold!",
+        reply_markup=back_btn,
+        parse_mode=ParseMode.HTML
     )
 
     striker_id = match.get("striker")

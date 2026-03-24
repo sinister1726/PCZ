@@ -328,8 +328,11 @@ async def advance_ball(match, result):
 
     print(f"➡️ advance_ball ENTER | result = {result} | balls_so_far = {len(match.get('current_over_balls', []))}")
 
+    _phase_managed = False
+
     if len(match.get("current_over_balls", [])) >= 6:
         print("⚠️ Over already finished. Triggering end_over.")
+        _phase_managed = True
         from plugins.game.team.over_engine import end_over
         return await end_over(match)
 
@@ -433,6 +436,7 @@ async def advance_ball(match, result):
                             parse_mode=ParseMode.HTML
                         )
                     
+                    _phase_managed = True
                     match.update({"phase": "finished", "striker": None, "non_striker": None})
                     from plugins.game.team.over_engine import update_game_in_db, end_match
                     await update_game_in_db(match)
