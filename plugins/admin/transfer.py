@@ -206,3 +206,155 @@ async def transfer_cmd(client, message):
             await pg_conn.close()
         except Exception:
             pass
+
+
+import json
+import asyncio
+import html
+from datetime import datetime
+
+from pyrogram import Client, filters
+from pyrogram.enums import ParseMode
+
+from config import Config
+from database.connection import db
+
+OWNER_FILTER = filters.user(list(Config.OWNER_IDS))
+
+
+def parse_mongo_date(value):
+    """Convert Mongo-style date to datetime"""
+    try:
+        if isinstance(value, dict) and "$date" in value:
+            return datetime.fromisoformat(value["$date"].replace("Z", "+00:00"))
+        return value
+    except Exception:
+        return value
+
+
+def clean_document(doc: dict):
+    """Recursively clean document (handle dates, remove _id if needed)"""
+    new_doc = {}
+
+    for k, v in doc.items():
+        if k == "_id":
+            continue  # skip old Mongo _id
+
+        if isinstance(v, dict):
+            new_doc[k] = clean_document(v)
+        elif isinstance(v, list):
+            new_doc[k] = [
+                clean_document(i) if isinstance(i, dict) else parse_mongo_date(i)
+                for i in v
+            ]
+        else:
+            new_doc[k] = parse_mongo_date(v)
+
+    return new_doc
+
+
+@Client.on_message(filters.command("dbtrans") & OWNER_FILTER)
+async def dbtrans_cmd(client, message):
+    if not message.reply_to_message or not message.reply_to_message.document:
+        return await message.reply_text(
+            "📂 <b>JSON → MongoDB Import</b>\n\n"
+            "<b>Usage:</b>\n"
+            "Reply to a JSON file with <code>/dbtrans collection_name</code>\n\n"
+            "Example:\n"
+            "<code>/dbtrans user_stats</code>",
+            parse_mode=ParseMode.HTML
+        )
+
+    args = message.command
+    if len(args) < 2:
+        return await message.reply_text(
+            "❌ Please specify collection name.\n"
+            "Example: <code>/dbtrans user_stats</code>",
+            parse_mode=ParseMode.HTML
+        )
+
+    collection_name = args[1]
+    col = db.db[collection_name]
+
+    status = await message.reply_text(
+        "📥 <b>Downloading JSON file…</b>",
+        parse_mode=ParseMode.HTML
+    )
+
+    try:
+        file_path = await message.reply_to_message.download()
+    except Exception as e:
+        return await status.edit_text(
+            f"❌ Download failed:\n<code>{html.escape(str(e))}</code>",
+            parse_mode=ParseMode.HTML
+        )
+
+    try:
+        await status.edit_text("📖 <b>Reading JSON data…</b>", parse_mode=ParseMode.HTML)
+
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read().strip()
+
+        # Detect format
+        if content.startswith("["):
+            data = json.loads(content)
+        else:
+            # line-by-line JSON
+            data = [json.loads(line) for line in content.splitlines() if line.strip()]
+
+    except Exception as e:
+        return await status.edit_text(
+            f"❌ JSON parse error:\n<code>{html.escape(str(e))}</code>",
+            parse_mode=ParseMode.HTML
+        )
+
+    total = len(data)
+    added = skipped = 0
+
+    await status.edit_text(
+        f"🚀 <b>Importing into:</b> <code>{collection_name}</code>\n"
+        f"📊 Total records: {total}",
+        parse_mode=ParseMode.HTML
+    )
+
+    for i, doc in enumerate(data):
+        try:
+            clean_doc = clean_document(doc)
+
+            # unique key logic (user_id fallback)
+            key = clean_doc.get("user_id") or clean_doc.get("game_id")
+
+            if key:
+                existing = await col.find_one({"user_id": key}) or await col.find_one({"game_id": key})
+                if existing:
+                    skipped += 1
+                    continue
+
+            await col.insert_one(clean_doc)
+            added += 1
+
+        except Exception:
+            skipped += 1
+
+        # update every 50 records
+        if i % 50 == 0:
+            try:
+                await status.edit_text(
+                    f"🔄 Processing...\n\n"
+                    f"✅ Added: {added}\n"
+                    f"⏭️ Skipped: {skipped}\n"
+                    f"📊 Done: {i}/{total}",
+                    parse_mode=ParseMode.HTML
+                )
+            except:
+                pass
+
+        await asyncio.sleep(0.01)
+
+    await status.edit_text(
+        "📦 <b>Import Complete!</b>\n\n"
+        f"✅ <b>Added:</b> {added}\n"
+        f"⏭️ <b>Skipped:</b> {skipped}\n"
+        f"📊 <b>Total:</b> {total}",
+        parse_mode=ParseMode.HTML
+    )
