@@ -11,3 +11,17 @@ requests
 GitPython
 aiocron
 pymongo[srv]
+aiocron
+asyncpg
+flask==3.0.0
+GitPython
+gunicorn==20.1.0
+httpx
+matplotlib
+pillow
+pymongo[srv]
+pyrofork
+pyrogram
+requests
+TgCrypto-pyrofork
+werkzeug==3.0.1
