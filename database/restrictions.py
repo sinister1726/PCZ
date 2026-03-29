@@ -1,66 +1,41 @@
+from datetime import datetime
 from database.connection import db
 
 
 async def restrict_user(user_id: int, reason: str, admin_id: int):
-    async with db.pool.acquire() as conn:
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS restricted_users (
-                user_id BIGINT PRIMARY KEY,
-                reason TEXT,
-                admin_id BIGINT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        await conn.execute("""
-            INSERT INTO restricted_users (user_id, reason, admin_id)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (user_id) 
-            DO UPDATE SET 
-                reason = EXCLUDED.reason,
-                admin_id = EXCLUDED.admin_id
-        """, user_id, reason, admin_id)
+    await db.db["restricted_users"].update_one(
+        {"user_id": user_id},
+        {"$set": {"user_id": user_id, "reason": reason, "admin_id": admin_id, "timestamp": datetime.utcnow()}},
+        upsert=True
+    )
 
 
 async def unrestrict_user(user_id: int):
-    async with db.pool.acquire() as conn:
-        await conn.execute(
-            "DELETE FROM restricted_users WHERE user_id = $1",
-            user_id
-        )
+    await db.db["restricted_users"].delete_one({"user_id": user_id})
 
 
 async def get_restriction_reason(user_id: int):
     try:
-        async with db.pool.acquire() as conn:
-            row = await conn.fetchrow(
-                "SELECT reason FROM restricted_users WHERE user_id = $1",
-                user_id
-            )
-            if row:
-                return row["reason"]
+        row = await db.db["restricted_users"].find_one({"user_id": user_id}, {"reason": 1})
+        if row:
+            return row.get("reason")
     except Exception:
         pass
-
     return None
-    
+
+
 async def get_all_restricted_users():
     try:
-        async with db.pool.acquire() as conn:
-            rows = await conn.fetch("""
-                SELECT user_id, reason, admin_id, timestamp
-                FROM restricted_users
-                ORDER BY timestamp DESC
-            """)
-
-            return [
-                {
-                    "user_id": row["user_id"],
-                    "reason": row["reason"],
-                    "admin_id": row["admin_id"],
-                    "timestamp": row["timestamp"]
-                }
-                for row in rows
-            ]
-
+        cursor = db.db["restricted_users"].find({}).sort("timestamp", -1)
+        rows = await cursor.to_list(length=1000)
+        return [
+            {
+                "user_id": row["user_id"],
+                "reason": row.get("reason"),
+                "admin_id": row.get("admin_id"),
+                "timestamp": row.get("timestamp"),
+            }
+            for row in rows
+        ]
     except Exception:
         return []

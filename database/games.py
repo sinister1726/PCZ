@@ -1,35 +1,55 @@
 import uuid
 import asyncio
+from datetime import datetime
 from database.connection import db
 
 
-async def _pool():
+async def _col():
     await db.ensure_pool()
-    if not db.pool:
+    if not db.db:
         raise RuntimeError("Database unavailable. Please try again in a moment.")
-    return db.pool
+    return db.db
 
 
 async def is_game_active(chat_id: int) -> bool:
     try:
-        async with (await _pool()).acquire() as conn:
-            return await conn.fetchval(
-                "SELECT 1 FROM games WHERE chat_id=$1 AND status='active'", chat_id
-            ) is not None
+        col = (await _col())["games"]
+        return await col.find_one({"chat_id": chat_id, "status": "active"}) is not None
     except Exception as e:
         print(f"[DB] is_game_active error: {e}")
         return False
 
 
 async def create_game(chat_id: int, mode: str, host_id: int, title: str):
-    game_id = uuid.uuid4()
+    game_id = str(uuid.uuid4())
     try:
-        async with (await _pool()).acquire() as conn:
-            await conn.execute(
-                "INSERT INTO games (game_id, chat_id, title, mode, host_id, status, phase) "
-                "VALUES ($1, $2, $3, $4, $5, 'active', 'setup')",
-                game_id, chat_id, title, mode, host_id,
-            )
+        col = (await _col())["games"]
+        await col.insert_one({
+            "game_id": game_id,
+            "chat_id": chat_id,
+            "title": title,
+            "mode": mode,
+            "host_id": host_id,
+            "status": "active",
+            "phase": "setup",
+            "winner": None,
+            "team_a_runs": 0,
+            "team_b_runs": 0,
+            "team_a_wickets": 0,
+            "team_b_wickets": 0,
+            "team_a_balls": 0,
+            "team_b_balls": 0,
+            "team_a_penalty": 0,
+            "team_b_penalty": 0,
+            "target": None,
+            "innings": 1,
+            "motm": None,
+            "toss_winner": None,
+            "batting_team": None,
+            "bowling_team": None,
+            "overs": 0,
+            "created_at": datetime.utcnow(),
+        })
     except Exception as e:
         print(f"[DB] create_game error: {e}")
     return game_id
@@ -37,20 +57,19 @@ async def create_game(chat_id: int, mode: str, host_id: int, title: str):
 
 async def end_game(chat_id: int):
     try:
-        async with (await _pool()).acquire() as conn:
-            await conn.execute(
-                "UPDATE games SET status='ended' WHERE chat_id=$1 AND status='active'", chat_id
-            )
+        col = (await _col())["games"]
+        await col.update_one(
+            {"chat_id": chat_id, "status": "active"},
+            {"$set": {"status": "ended"}}
+        )
     except Exception as e:
         print(f"[DB] end_game error: {e}")
 
 
 async def get_active_game(chat_id: int):
     try:
-        async with (await _pool()).acquire() as conn:
-            return await conn.fetchrow(
-                "SELECT * FROM games WHERE chat_id=$1 AND status='active'", chat_id
-            )
+        col = (await _col())["games"]
+        return await col.find_one({"chat_id": chat_id, "status": "active"})
     except Exception as e:
         print(f"[DB] get_active_game error: {e}")
         return None
@@ -58,20 +77,20 @@ async def get_active_game(chat_id: int):
 
 async def set_phase(chat_id: int, phase: str):
     try:
-        async with (await _pool()).acquire() as conn:
-            await conn.execute(
-                "UPDATE games SET phase=$1 WHERE chat_id=$2 AND status='active'", phase, chat_id
-            )
+        col = (await _col())["games"]
+        await col.update_one(
+            {"chat_id": chat_id, "status": "active"},
+            {"$set": {"phase": phase}}
+        )
     except Exception as e:
         print(f"[DB] set_phase error: {e}")
 
 
 async def get_phase(chat_id: int):
     try:
-        async with (await _pool()).acquire() as conn:
-            return await conn.fetchval(
-                "SELECT phase FROM games WHERE chat_id=$1 AND status='active'", chat_id
-            )
+        col = (await _col())["games"]
+        row = await col.find_one({"chat_id": chat_id, "status": "active"}, {"phase": 1})
+        return row.get("phase") if row else None
     except Exception as e:
         print(f"[DB] get_phase error: {e}")
         return None
@@ -79,13 +98,18 @@ async def get_phase(chat_id: int):
 
 async def user_in_other_game(user_id: int, current_chat_id: int):
     try:
-        async with (await _pool()).acquire() as conn:
-            return await conn.fetchrow(
-                "SELECT g.chat_id, g.title FROM game_players p "
-                "JOIN games g ON p.game_id = g.game_id "
-                "WHERE p.user_id=$1 AND g.chat_id!=$2 AND g.status='active'",
-                user_id, current_chat_id,
-            )
+        database = await _col()
+        player_col = database["game_players"]
+        games_col = database["games"]
+        player = await player_col.find_one({"user_id": user_id})
+        if not player:
+            return None
+        game = await games_col.find_one({
+            "game_id": player["game_id"],
+            "chat_id": {"$ne": current_chat_id},
+            "status": "active"
+        })
+        return game
     except Exception as e:
         print(f"[DB] user_in_other_game error: {e}")
         return None
@@ -93,10 +117,9 @@ async def user_in_other_game(user_id: int, current_chat_id: int):
 
 async def get_shift_count(game_id, user_id):
     try:
-        async with (await _pool()).acquire() as conn:
-            return await conn.fetchval(
-                "SELECT shifts FROM team_shifts WHERE game_id=$1 AND user_id=$2", game_id, user_id
-            ) or 0
+        col = (await _col())["team_shifts"]
+        row = await col.find_one({"game_id": str(game_id), "user_id": user_id})
+        return row.get("shifts", 0) if row else 0
     except Exception as e:
         print(f"[DB] get_shift_count error: {e}")
         return 0
@@ -104,64 +127,70 @@ async def get_shift_count(game_id, user_id):
 
 async def increment_shift(game_id, user_id):
     try:
-        async with (await _pool()).acquire() as conn:
-            await conn.execute(
-                "INSERT INTO team_shifts (game_id, user_id, shifts) VALUES ($1, $2, 1) "
-                "ON CONFLICT (game_id, user_id) DO UPDATE SET shifts = team_shifts.shifts + 1",
-                game_id, user_id,
-            )
+        col = (await _col())["team_shifts"]
+        await col.update_one(
+            {"game_id": str(game_id), "user_id": user_id},
+            {"$inc": {"shifts": 1}},
+            upsert=True
+        )
     except Exception as e:
         print(f"[DB] increment_shift error: {e}")
 
 
 async def get_team_players(game_id, team: str):
     try:
-        async with (await _pool()).acquire() as conn:
-            return await conn.fetch(
-                "SELECT user_id, is_out, is_captain, role FROM game_players "
-                "WHERE game_id=$1 AND team=$2 ORDER BY joined_at ASC",
-                game_id, team,
-            )
+        col = (await _col())["game_players"]
+        cursor = col.find(
+            {"game_id": str(game_id), "team": team},
+            {"user_id": 1, "is_out": 1, "is_captain": 1, "role": 1}
+        ).sort("joined_at", 1)
+        return await cursor.to_list(length=100)
     except Exception as e:
         print(f"[DB] get_team_players error: {e}")
         return []
 
 
-async def update_team_penalty(game_id: uuid.UUID, team: str, amount: int = 6):
-    column = "team_a_penalty" if team == "A" else "team_b_penalty"
+async def update_team_penalty(game_id, team: str, amount: int = 6):
+    field = "team_a_penalty" if team == "A" else "team_b_penalty"
     try:
-        async with (await _pool()).acquire() as conn:
-            await conn.execute(
-                f"UPDATE games SET {column} = {column} + $1 WHERE game_id = $2", amount, game_id
-            )
+        col = (await _col())["games"]
+        await col.update_one(
+            {"game_id": str(game_id)},
+            {"$inc": {field: amount}}
+        )
     except Exception as e:
         print(f"[DB] update_team_penalty error: {e}")
 
 
 async def increment_user_penalty_count(user_id: int):
     try:
-        async with (await _pool()).acquire() as conn:
-            await conn.execute(
-                "INSERT INTO user_stats (user_id, penalties_received) VALUES ($1, 1) "
-                "ON CONFLICT (user_id) DO UPDATE SET penalties_received = user_stats.penalties_received + 1",
-                user_id,
-            )
+        col = (await _col())["user_stats"]
+        await col.update_one(
+            {"user_id": user_id},
+            {"$inc": {"penalties_received": 1}},
+            upsert=True
+        )
     except Exception as e:
         print(f"[DB] increment_user_penalty_count error: {e}")
 
 
 async def save_match_result(conn, match, winner, motm_id):
-    await conn.execute(
-        "UPDATE games SET winner=$1, team_a_runs=$2, team_a_wickets=$3, "
-        "team_b_runs=$4, team_b_wickets=$5, team_a_penalty=$6, team_b_penalty=$7, "
-        "motm=$8, status='ended', phase='finished' WHERE game_id=$9",
-        winner,
-        match["teams"]["A"]["runs"],
-        match["teams"]["A"]["wickets"],
-        match["teams"]["B"]["runs"],
-        match["teams"]["B"]["wickets"],
-        match["teams"]["A"].get("penalty", 0),
-        match["teams"]["B"].get("penalty", 0),
-        motm_id,
-        match["game_id"],
-    )
+    try:
+        col = db.db["games"]
+        await col.update_one(
+            {"game_id": str(match["game_id"])},
+            {"$set": {
+                "winner": winner,
+                "team_a_runs": match["teams"]["A"]["runs"],
+                "team_a_wickets": match["teams"]["A"]["wickets"],
+                "team_b_runs": match["teams"]["B"]["runs"],
+                "team_b_wickets": match["teams"]["B"]["wickets"],
+                "team_a_penalty": match["teams"]["A"].get("penalty", 0),
+                "team_b_penalty": match["teams"]["B"].get("penalty", 0),
+                "motm": motm_id,
+                "status": "ended",
+                "phase": "finished",
+            }}
+        )
+    except Exception as e:
+        print(f"[DB] save_match_result error: {e}")

@@ -1,79 +1,110 @@
+from datetime import datetime
 from database.connection import db
 
+
 async def get_top_players_runs(limit: int = 10):
-    async with db.pool.acquire() as conn:
-        return await conn.fetch(
-            """
-            SELECT s.user_id, COALESCE(u.name, s.first_name, 'Player') as name, s.runs, s.matches 
-            FROM user_stats s
-            LEFT JOIN users u ON s.user_id = u.user_id
-            ORDER BY s.runs DESC
-            LIMIT $1
-            """,
-            limit
-        )
-        
+    col = db.db["user_stats"]
+    cursor = col.find({}, {"user_id": 1, "first_name": 1, "runs": 1, "matches": 1}).sort("runs", -1).limit(limit)
+    rows = await cursor.to_list(length=limit)
+    users_col = db.db["users"]
+    result = []
+    for row in rows:
+        user = await users_col.find_one({"user_id": row["user_id"]}, {"name": 1})
+        name = (user or {}).get("name") or row.get("first_name") or "Player"
+        result.append({
+            "user_id": row["user_id"],
+            "name": name,
+            "runs": row.get("runs", 0),
+            "matches": row.get("matches", 0),
+        })
+    return result
+
+
 async def add_user(user_id: int, name: str) -> bool:
-    async with db.pool.acquire() as conn:
-        exists = await conn.fetchval("SELECT user_id FROM users WHERE user_id=$1", user_id)
-        if exists:
-            return False
-        await conn.execute("INSERT INTO users (user_id, name) VALUES ($1, $2)", user_id, name)
-        return True
+    col = db.db["users"]
+    existing = await col.find_one({"user_id": user_id})
+    if existing:
+        return False
+    await col.insert_one({
+        "user_id": user_id,
+        "name": name,
+        "coins": 1000,
+        "games_played": 0,
+        "notify_enabled": True,
+        "created_at": datetime.utcnow(),
+    })
+    return True
+
 
 async def total_users() -> int:
-    async with db.pool.acquire() as conn:
-        return await conn.fetchval("SELECT COUNT(*) FROM users")
+    return await db.db["users"].count_documents({})
+
 
 async def get_mod(user_id: int):
-    async with db.pool.acquire() as conn:
-        return await conn.fetchrow("SELECT * FROM mods WHERE user_id=$1", user_id)
+    return await db.db["mods"].find_one({"user_id": user_id})
+
 
 async def is_mod(user_id: int, min_tier: int = 1) -> bool:
-    async with db.pool.acquire() as conn:
-        tier = await conn.fetchval("SELECT tier FROM mods WHERE user_id=$1", user_id)
-        return tier is not None and tier >= min_tier
+    row = await db.db["mods"].find_one({"user_id": user_id}, {"tier": 1})
+    if not row:
+        return False
+    return row.get("tier", 0) >= min_tier
+
 
 async def add_or_update_mod(user_id: int, tier: int, owner_id: int):
-    async with db.pool.acquire() as conn:
-        await conn.execute("INSERT INTO mods (user_id, tier, added_by) VALUES ($1, $2, $3) ON CONFLICT (user_id) DO UPDATE SET tier=$2, added_by=$3", user_id, tier, owner_id)
+    await db.db["mods"].update_one(
+        {"user_id": user_id},
+        {"$set": {"user_id": user_id, "tier": tier, "added_by": owner_id, "added_at": datetime.utcnow()}},
+        upsert=True
+    )
+
 
 async def remove_mod(user_id: int):
-    async with db.pool.acquire() as conn:
-        await conn.execute("DELETE FROM mods WHERE user_id=$1", user_id)
+    await db.db["mods"].delete_one({"user_id": user_id})
+
 
 async def list_mods():
-    async with db.pool.acquire() as conn:
-        return await conn.fetch("SELECT user_id, tier, added_at FROM mods ORDER BY tier DESC")
+    cursor = db.db["mods"].find({}, {"user_id": 1, "tier": 1, "added_at": 1}).sort("tier", -1)
+    return await cursor.to_list(length=200)
+
 
 async def ban_user(user_id, first_name, reason, by):
-    async with db.pool.acquire() as conn:
-        await conn.execute("INSERT INTO user_bans (user_id, first_name, reason, banned_by) VALUES ($1,$2,$3,$4) ON CONFLICT (user_id) DO UPDATE SET reason=$3, banned_by=$4, banned_at=NOW()", user_id, first_name, reason, by)
+    await db.db["user_bans"].update_one(
+        {"user_id": user_id},
+        {"$set": {"user_id": user_id, "first_name": first_name, "reason": reason, "banned_by": by, "banned_at": datetime.utcnow()}},
+        upsert=True
+    )
+
 
 async def unban_user(user_id):
-    async with db.pool.acquire() as conn:
-        await conn.execute("DELETE FROM user_bans WHERE user_id=$1", user_id)
+    await db.db["user_bans"].delete_one({"user_id": user_id})
+
 
 async def get_user_ban(user_id):
-    async with db.pool.acquire() as conn:
-        return await conn.fetchrow("SELECT * FROM user_bans WHERE user_id=$1", user_id)
+    return await db.db["user_bans"].find_one({"user_id": user_id})
+
 
 async def list_user_bans():
-    async with db.pool.acquire() as conn:
-        return await conn.fetch("SELECT * FROM user_bans")
+    cursor = db.db["user_bans"].find({})
+    return await cursor.to_list(length=1000)
+
 
 async def ban_group(chat_id, title, reason, by):
-    async with db.pool.acquire() as conn:
-        await conn.execute("INSERT INTO group_bans (chat_id, title, reason, banned_by) VALUES ($1,$2,$3,$4) ON CONFLICT (chat_id) DO UPDATE SET reason=$3, banned_by=$4, banned_at=NOW()", chat_id, title, reason, by)
+    await db.db["group_bans"].update_one(
+        {"chat_id": chat_id},
+        {"$set": {"chat_id": chat_id, "title": title, "reason": reason, "banned_by": by, "banned_at": datetime.utcnow()}},
+        upsert=True
+    )
+
 
 async def unban_group(chat_id):
-    async with db.pool.acquire() as conn:
-        await conn.execute("DELETE FROM group_bans WHERE chat_id=$1", chat_id)
+    await db.db["group_bans"].delete_one({"chat_id": chat_id})
+
 
 async def get_group_ban(chat_id):
-    async with db.pool.acquire() as conn:
-        return await conn.fetchrow("SELECT * FROM group_bans WHERE chat_id=$1", chat_id)
+    return await db.db["group_bans"].find_one({"chat_id": chat_id})
+
 
 async def list_group_bans():
-    async with db.pool.acquire() as conn:
-        return await conn.fetch("SELECT * FROM group_bans")
+    cursor = db.db["group_bans"].find({})
+    return await cursor.to_list(length=1000)

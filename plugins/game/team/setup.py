@@ -1,5 +1,4 @@
 import asyncio
-from utils.dbpass import safe_fetch
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.games import get_active_game
@@ -9,20 +8,22 @@ import random
 from pyrogram.enums import ParseMode
 from plugins.game.team import init_match
 from plugins.game.team import ACTIVE_MATCHES
-from utils.mentions import mention_html 
+from utils.mentions import mention_html
 from html import escape
 from Assets.files import RUN_VIDEOS
+
 
 def safe_mention(user):
     name = escape(user.first_name or "Player")
     return f'<a href="tg://user?id={user.id}">{name}</a>'
 
+
 def sync_captain_flags(match, team):
     captain_id = match["teams"][team].get("captain_id")
-
     for uid, pdata in match["players"].items():
         if pdata.get("team") == team:
             pdata["is_captain"] = (uid == captain_id)
+
 
 async def display_user(client, user_id):
     try:
@@ -34,6 +35,7 @@ async def display_user(client, user_id):
     except Exception:
         return f"<code>{user_id}</code>"
 
+
 async def get_username(client, user_id: int):
     try:
         u = await client.get_users(user_id)
@@ -41,8 +43,10 @@ async def get_username(client, user_id: int):
     except Exception:
         return "Unknown"
 
+
 def uname(user):
     return f"@{user.username}" if user.username else user.first_name
+
 
 @Client.on_message(filters.command("choose_cap") & filters.group)
 @host_only
@@ -53,16 +57,13 @@ async def choose_captain(client, message):
     if not game:
         return await message.reply_text("**No active game.**")
 
-    game_id = game["game_id"]
+    game_id = str(game["game_id"])
 
-    async with db.pool.acquire() as conn:
-        captains = await conn.fetch(
-            """
-            SELECT team FROM game_players
-            WHERE game_id=$1 AND is_captain=true
-            """,
-            game_id
-        )
+    await db.ensure_pool()
+    captains = await db.db["game_players"].find(
+        {"game_id": game_id, "is_captain": True},
+        {"team": 1}
+    ).to_list(length=10)
 
     if len(captains) == 2:
         return await message.reply_text(
@@ -73,38 +74,26 @@ async def choose_captain(client, message):
     if len(captains) == 1:
         taken = captains[0]["team"]
         remaining = "B" if taken == "A" else "A"
-
-        buttons = InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        f"Become Team {remaining} Captain",
-                        callback_data=f"cap_{remaining}"
-                    )
-                ]
-            ]
-        )
-
+        buttons = InlineKeyboardMarkup([[
+            InlineKeyboardButton(f"Become Team {remaining} Captain", callback_data=f"cap_{remaining}")
+        ]])
         return await message.reply_text(
             "🧢 **CAPTAIN SELECTION IN PROGRESS**\n"
             f"Team {remaining} must choose a captain.",
             reply_markup=buttons
         )
 
-    buttons = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("Become Team A Captain", callback_data="cap_A"),
-                InlineKeyboardButton("Become Team B Captain", callback_data="cap_B"),
-            ]
-        ]
-    )
+    buttons = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Become Team A Captain", callback_data="cap_A"),
+        InlineKeyboardButton("Become Team B Captain", callback_data="cap_B"),
+    ]])
 
     await message.reply_text(
         "🧢 **CAPTAIN SELECTION OPEN**\n"
         "Each team must choose one leader to proceed ⏳",
         reply_markup=buttons
     )
+
 
 @Client.on_callback_query(filters.regex("^cap_"))
 async def set_captain(client, query):
@@ -118,67 +107,46 @@ async def set_captain(client, query):
     if not game:
         return await query.answer("No active game.", show_alert=True)
 
-    game_id = game["game_id"]
+    game_id = str(game["game_id"])
+    await db.ensure_pool()
 
-    async with db.pool.acquire() as conn:
-        player = await conn.fetchrow(
-            "SELECT 1 FROM game_players WHERE game_id=$1 AND user_id=$2 AND team=$3",
-            game_id, user.id, team
-        )
-        if not player:
-            return await query.answer("You are not in this team.", show_alert=True)
+    player = await db.db["game_players"].find_one({"game_id": game_id, "user_id": user.id, "team": team})
+    if not player:
+        return await query.answer("You are not in this team.", show_alert=True)
 
-        existing = await conn.fetchval(
-            "SELECT 1 FROM game_players WHERE game_id=$1 AND team=$2 AND is_captain=true",
-            game_id, team
-        )
-        if existing:
-            return await query.answer("Captain already chosen for this team.", show_alert=True)
+    existing = await db.db["game_players"].find_one({"game_id": game_id, "team": team, "is_captain": True})
+    if existing:
+        return await query.answer("Captain already chosen for this team.", show_alert=True)
 
-        await conn.execute(
-            "UPDATE game_players SET is_captain=true WHERE game_id=$1 AND user_id=$2",
-            game_id, user.id
-        )
-        
+    await db.db["game_players"].update_one(
+        {"game_id": game_id, "user_id": user.id},
+        {"$set": {"is_captain": True}}
+    )
+
     if match:
         if user.id not in match["players"]:
             match["players"][user.id] = {
-                "runs": 0,
-                "balls_faced": 0,
-                "wickets": 0,
-                "runs_conceded": 0,
-                "balls_bowled": 0,
-                "bowling_balls": [],
-                "team": team,
-                "is_out": False,
-                "sixes_count": 0,
-                "fours_count": 0,
+                "runs": 0, "balls_faced": 0, "wickets": 0, "runs_conceded": 0,
+                "balls_bowled": 0, "bowling_balls": [], "team": team,
+                "is_out": False, "sixes_count": 0, "fours_count": 0,
             }
-
         for uid, pdata in match["players"].items():
             if pdata.get("team") == team:
                 pdata["is_captain"] = False
-
         match["players"][user.id]["is_captain"] = True
         match["teams"].setdefault(team, {})["captain_id"] = user.id
-
         match["user_cache"][user.id] = user.first_name
 
-    async with db.pool.acquire() as conn:
-        caps = await conn.fetch(
-            "SELECT team, user_id FROM game_players WHERE game_id=$1 AND is_captain=true",
-            game_id
-        )
+    caps = await db.db["game_players"].find(
+        {"game_id": game_id, "is_captain": True},
+        {"team": 1, "user_id": 1}
+    ).to_list(length=10)
 
     if len(caps) == 1:
         remaining = "B" if team == "A" else "A"
-        buttons = InlineKeyboardMarkup(
-            [[InlineKeyboardButton(
-                f"Become Team {remaining} Captain",
-                callback_data=f"cap_{remaining}"
-            )]]
-        )
-
+        buttons = InlineKeyboardMarkup([[
+            InlineKeyboardButton(f"Become Team {remaining} Captain", callback_data=f"cap_{remaining}")
+        ]])
         return await query.message.edit_text(
             f"⚡ <b>CAPTAIN CONFIRMED</b>\n"
             f"────┈┄┄╌╌╌╌┄┄┈────\n"
@@ -207,16 +175,12 @@ async def set_captain(client, query):
 
     await send_toss(client, chat_id, game_id)
 
-async def send_toss(client, chat_id, game_id):
-    buttons = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("Head", callback_data="toss_head"),
-                InlineKeyboardButton("Tails", callback_data="toss_tail"),
-            ]
-        ]
-    )
 
+async def send_toss(client, chat_id, game_id):
+    buttons = InlineKeyboardMarkup([[
+        InlineKeyboardButton("Head", callback_data="toss_head"),
+        InlineKeyboardButton("Tails", callback_data="toss_tail"),
+    ]])
     await client.send_message(
         chat_id,
         "🪙 **TOSS TIME**\n"
@@ -224,7 +188,6 @@ async def send_toss(client, chat_id, game_id):
         reply_markup=buttons
     )
 
-import random
 
 @Client.on_callback_query(filters.regex("^toss_"))
 async def toss_handler(client, query):
@@ -241,48 +204,37 @@ async def toss_handler(client, query):
     if not game:
         return await query.answer("No active game.", show_alert=True)
 
-    game_id = game["game_id"]
+    game_id = str(game["game_id"])
+    await db.ensure_pool()
 
-    async with db.pool.acquire() as conn:
-        async with conn.transaction():
+    caller_cap = await db.db["game_players"].find_one(
+        {"game_id": game_id, "user_id": caller.id, "is_captain": True},
+        {"team": 1}
+    )
+    if not caller_cap:
+        return await query.answer("Only captains can participate in the toss.", show_alert=True)
 
-            caller_cap = await conn.fetchrow(
-                """SELECT team FROM game_players 
-                   WHERE game_id=$1 AND user_id=$2 AND is_captain=true""",
-                game_id, caller.id
-            )
-            if not caller_cap:
-                return await query.answer(
-                    "Only captains can participate in the toss.",
-                    show_alert=True
-                )
+    game_row = await db.db["games"].find_one({"game_id": game_id}, {"toss_winner": 1})
+    if game_row and game_row.get("toss_winner"):
+        return await query.answer("Toss already completed.", show_alert=True)
 
-            game_row = await conn.fetchrow(
-                "SELECT toss_winner FROM games WHERE game_id=$1 FOR UPDATE",
-                game_id
-            )
+    opponent = await db.db["game_players"].find_one(
+        {"game_id": game_id, "is_captain": True, "user_id": {"$ne": caller.id}},
+        {"user_id": 1}
+    )
+    if not opponent:
+        return await query.answer("Opponent not found.", show_alert=True)
 
-            if game_row["toss_winner"]:
-                return await query.answer("Toss already completed.", show_alert=True)
+    result = random.choice(["head", "tail"])
+    caller_won = (choice == result)
+    winner_id = caller.id if caller_won else opponent["user_id"]
 
-            opponent = await conn.fetchrow(
-                """SELECT user_id FROM game_players 
-                   WHERE game_id=$1 AND is_captain=true AND user_id != $2""",
-                game_id, caller.id
-            )
-
-            if not opponent:
-                return await query.answer("Opponent not found.", show_alert=True)
-
-            result = random.choice(["head", "tail"])
-            caller_won = (choice == result)
-
-            winner_id = caller.id if caller_won else opponent["user_id"]
-
-            await conn.execute(
-                "UPDATE games SET toss_winner=$1 WHERE game_id=$2",
-                winner_id, game_id
-            )
+    update_result = await db.db["games"].update_one(
+        {"game_id": game_id, "toss_winner": None},
+        {"$set": {"toss_winner": winner_id}}
+    )
+    if update_result.modified_count == 0:
+        return await query.answer("Toss already completed.", show_alert=True)
 
     if match:
         match["toss_winner"] = winner_id
@@ -295,12 +247,10 @@ async def toss_handler(client, query):
         parse_mode=ParseMode.HTML
     )
 
-    buttons = InlineKeyboardMarkup(
-        [[
-            InlineKeyboardButton("🏏 Bat First", callback_data="decide_bat"),
-            InlineKeyboardButton("🎯 Bowl First", callback_data="decide_bowl"),
-        ]]
-    )
+    buttons = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🏏 Bat First", callback_data="decide_bat"),
+        InlineKeyboardButton("🎯 Bowl First", callback_data="decide_bowl"),
+    ]])
 
     await client.send_message(
         chat_id,
@@ -310,52 +260,46 @@ async def toss_handler(client, query):
         parse_mode=ParseMode.HTML
     )
 
+
 @Client.on_callback_query(filters.regex("^decide_"))
 async def decide_play(client, query):
     chat_id = query.message.chat.id
     user = query.from_user
-    decision = query.data.split("_")[1] # 'bat' or 'bowl'
+    decision = query.data.split("_")[1]
     match = ACTIVE_MATCHES.get(chat_id)
 
-    async with db.pool.acquire() as conn:
-        game = await conn.fetchrow(
-            "SELECT game_id, toss_winner FROM games WHERE chat_id=$1 AND status='active'",
-            chat_id
-        )
+    await db.ensure_pool()
 
-        if not game:
-            return await query.answer("No active game.", show_alert=True)
+    game = await db.db["games"].find_one(
+        {"chat_id": chat_id, "status": "active"},
+        {"game_id": 1, "toss_winner": 1}
+    )
 
-        game_id = game["game_id"]
+    if not game:
+        return await query.answer("No active game.", show_alert=True)
 
-        if game["toss_winner"] != user.id:
-            return await query.answer(
-                f"⛔ Only the toss winner can decide!", 
-                show_alert=True
-            )
+    game_id = str(game["game_id"])
 
-        cap = await conn.fetchrow(
-            "SELECT team FROM game_players WHERE game_id=$1 AND user_id=$2 AND is_captain=true",
-            game_id, user.id
-        )
+    if game.get("toss_winner") != user.id:
+        return await query.answer("⛔ Only the toss winner can decide!", show_alert=True)
 
-        if not cap:
-            return await query.answer("Error: Captain team data not found.", show_alert=True)
+    cap = await db.db["game_players"].find_one(
+        {"game_id": game_id, "user_id": user.id, "is_captain": True},
+        {"team": 1}
+    )
+    if not cap:
+        return await query.answer("Error: Captain team data not found.", show_alert=True)
 
-        my_team = cap["team"]
-        other_team = "B" if my_team == "A" else "A"
+    my_team = cap["team"]
+    other_team = "B" if my_team == "A" else "A"
 
-        batting = my_team if decision == "bat" else other_team
-        bowling = other_team if decision == "bat" else my_team
+    batting = my_team if decision == "bat" else other_team
+    bowling = other_team if decision == "bat" else my_team
 
-        await conn.execute(
-            """
-            UPDATE games
-            SET batting_team=$1, bowling_team=$2, phase='overs_setup'
-            WHERE game_id=$3
-            """,
-            batting, bowling, game_id
-        )
+    await db.db["games"].update_one(
+        {"game_id": game_id},
+        {"$set": {"batting_team": batting, "bowling_team": bowling, "phase": "overs_setup"}}
+    )
 
     if match:
         match["batting_team"] = batting
@@ -381,6 +325,7 @@ async def decide_play(client, query):
         parse_mode=ParseMode.HTML
     )
 
+
 @Client.on_message(filters.command("set_overs") & filters.group)
 @host_only
 async def set_overs(client, message):
@@ -395,26 +340,17 @@ async def set_overs(client, message):
             "🪙 **Toss not completed yet.**\n"
             "Finish the toss before setting overs."
         )
-        
+
     if game.get("overs"):
-        return await message.reply_text(
-            f"📊 **Overs already set:** `{game['overs']}`"
-        )
+        return await message.reply_text(f"📊 **Overs already set:** `{game['overs']}`")
 
     buttons = []
     row = []
-
     for i in range(1, 21):
-        row.append(
-            InlineKeyboardButton(
-                text=f"{i} Overs",
-                callback_data=f"setovers_{i}"
-            )
-        )
+        row.append(InlineKeyboardButton(text=f"{i} Overs", callback_data=f"setovers_{i}"))
         if len(row) == 4:
             buttons.append(row)
             row = []
-
     if row:
         buttons.append(row)
 
@@ -423,6 +359,7 @@ async def set_overs(client, message):
         "Select the total overs for this match:",
         reply_markup=InlineKeyboardMarkup(buttons)
     )
+
 
 @Client.on_callback_query(filters.regex("^setovers_"))
 async def overs_callback(client, query):
@@ -440,15 +377,13 @@ async def overs_callback(client, query):
     if game.get("overs"):
         return await query.answer("Overs already locked.", show_alert=True)
 
-    async with db.pool.acquire() as conn:
-        await conn.execute(
-            "UPDATE games SET overs=$1 WHERE game_id=$2",
-            overs, game["game_id"]
-        )
+    game_id = str(game["game_id"])
+    await db.ensure_pool()
+    await db.db["games"].update_one({"game_id": game_id}, {"$set": {"overs": overs}})
 
     if chat_id in ACTIVE_MATCHES:
         ACTIVE_MATCHES[chat_id]["overs"] = overs
-        ACTIVE_MATCHES[chat_id]["phase"] = "LIVE" 
+        ACTIVE_MATCHES[chat_id]["phase"] = "LIVE"
 
     await query.message.edit_text(
         f"📊 **OVERS CONFIRMED**\n"
@@ -456,11 +391,10 @@ async def overs_callback(client, query):
         parse_mode=ParseMode.MARKDOWN
     )
 
-    async with db.pool.acquire() as conn:
-        caps = await conn.fetch(
-            "SELECT team, user_id FROM game_players WHERE game_id=$1 AND is_captain=true",
-            game["game_id"]
-        )
+    caps = await db.db["game_players"].find(
+        {"game_id": game_id, "is_captain": True},
+        {"team": 1, "user_id": 1}
+    ).to_list(length=10)
 
     cap_map = {c["team"]: c["user_id"] for c in caps}
 
@@ -484,9 +418,6 @@ async def overs_callback(client, query):
         parse_mode=ParseMode.HTML
     )
 
-import asyncio
-from pyrogram import Client, filters
-from pyrogram.enums import ParseMode
 
 @Client.on_message(filters.command("batting") & filters.group)
 async def set_batting(client, message):
@@ -501,15 +432,15 @@ async def set_batting(client, message):
         )
 
     idx = int(args[1]) - 1
-    
+
     match = ACTIVE_MATCHES.get(chat_id)
     if match and match.get("mode") == "Solo":
         return
-    
+
     game = await get_active_game(chat_id)
     if not game:
         return await message.reply_text(
-            "😴 <b>No match right now.</b>\n/Start one first and we’ll cook 🔥",
+            "😴 <b>No match right now.</b>\n/Start one first and we'll cook 🔥",
             parse_mode=ParseMode.HTML
         )
 
@@ -521,70 +452,63 @@ async def set_batting(client, message):
             parse_mode=ParseMode.HTML
         )
 
-    game_id = game["game_id"]
+    game_id = str(game["game_id"])
     batting_team = game["batting_team"]
 
-    team_players = match.get("teams", {}).get(batting_team, {}).get("players", [])
-    
+    team_players = match.get("teams", {}).get(batting_team, {}).get("players", []) if match else []
+
     if idx < 0 or idx >= len(team_players):
         return await message.reply_text(f"❌ <b>Invalid player number.</b> Choose between 1 and {len(team_players)}.")
-        
+
     selected_id = team_players[idx]
 
-    async with db.pool.acquire() as conn:
-        players_db = await conn.fetch(
-            "SELECT user_id, is_captain FROM game_players WHERE game_id=$1 AND team=$2",
-            game_id, batting_team
-        )
+    await db.ensure_pool()
+    players_db = await db.db["game_players"].find(
+        {"game_id": game_id, "team": batting_team},
+        {"user_id": 1, "is_captain": 1}
+    ).to_list(length=50)
 
-        is_cap = any(p['user_id'] == user.id and p['is_captain'] for p in players_db)
-        if user.id != game.get("host_id") and not is_cap:
-            return await message.reply_text(
-                "🚫 <b>Captain’s and Host call only.</b>\nSpectators, enjoy the drama 😌",
-                parse_mode=ParseMode.HTML
-            )
+    is_cap = any(p["user_id"] == user.id and p.get("is_captain") for p in players_db)
+    if user.id != game.get("host_id") and not is_cap:
+        return await message.reply_text(
+            "🚫 <b>Captain's and Host call only.</b>\nSpectators, enjoy the drama 😌",
+            parse_mode=ParseMode.HTML
+        )
 
     if match and match.get("players", {}).get(selected_id, {}).get("is_out"):
-        return await message.reply_text(
-            "💀 <b>That batter is history.</b>\nOnce out, always out 😬"
-        )
+        return await message.reply_text("💀 <b>That batter is history.</b>\nOnce out, always out 😬")
 
     if match and selected_id in (match.get("striker"), match.get("non_striker")):
-        return await message.reply_text(
-            "⚠️ <b>Already batting!</b>\nNo cloning allowed 🧬"
-        )
+        return await message.reply_text("⚠️ <b>Already batting!</b>\nNo cloning allowed 🧬")
 
     role = "striker" if match.get("striker") is None else "non_striker"
 
     async def background_db_update():
-        async with db.pool.acquire() as bg_conn:
-            await bg_conn.execute(
-                "UPDATE game_players SET role=$1 WHERE game_id=$2 AND user_id=$3",
-                role, game_id, selected_id
+        try:
+            await db.db["game_players"].update_one(
+                {"game_id": game_id, "user_id": selected_id},
+                {"$set": {"role": role}}
             )
+        except Exception:
+            pass
 
     asyncio.create_task(background_db_update())
 
     try:
         player_obj = await client.get_users(selected_id)
         mention = f"<a href='tg://user?id={selected_id}'>{player_obj.first_name}</a>"
-        match["user_cache"][selected_id] = player_obj.first_name
+        if match:
+            match["user_cache"][selected_id] = player_obj.first_name
     except Exception:
         mention = "Player"
 
     if match:
         match[role] = selected_id
         match["players"].setdefault(selected_id, {
-            "runs": 0,
-            "balls_faced": 0,
-            "wickets": 0,
-            "runs_conceded": 0,
-            "balls_bowled": 0,
-            "bowling_balls": [],
-            "team": batting_team,
-            "is_out": False
+            "runs": 0, "balls_faced": 0, "wickets": 0, "runs_conceded": 0,
+            "balls_bowled": 0, "bowling_balls": [], "team": batting_team, "is_out": False
         })
-        
+
     if role == "striker" and match.get("non_striker") is None:
         return await message.reply_text(
             f"🏏 <b>STRIKER LOCKED 🔒</b> {mention} takes the strike.\n"
@@ -593,7 +517,7 @@ async def set_batting(client, message):
             parse_mode=ParseMode.HTML
         )
 
-    if match.get("striker") and match.get("non_striker"):
+    if match and match.get("striker") and match.get("non_striker"):
         if match.get("total_balls", 0) > 0:
             await message.reply_text(
                 f"🧢 <b>NEW BATTER IN!</b>\n"
@@ -607,10 +531,10 @@ async def set_batting(client, message):
                 match["bowled"] = False
                 match["batted"] = False
                 match["last_bowl"] = None
-                
+
                 if "timeouts" in match:
-                    for role in ["bowler", "batter"]:
-                        task = match["timeouts"].get(role, {}).get("task")
+                    for r in ["bowler", "batter"]:
+                        task = match["timeouts"].get(r, {}).get("task")
                         if task:
                             try:
                                 task.cancel()
@@ -620,15 +544,13 @@ async def set_batting(client, message):
                 from plugins.game.team.state import start_first_ball
                 await start_first_ball(client, match)
                 return
-                
             else:
                 return await message.reply_text(
                     "🎯 <b>Batters are set.</b>\n"
-                    "Bowling Captain, it’s your move.\n"
+                    "Bowling Captain, it's your move.\n"
                     "Choose your bowler using /bowling",
                     parse_mode=ParseMode.HTML
                 )
-
         else:
             match["phase"] = "READY"
             match["current_bowler"] = None
@@ -648,6 +570,7 @@ async def set_batting(client, message):
                 parse_mode=ParseMode.HTML
             )
 
+
 @Client.on_message(filters.command("bowling") & filters.group)
 async def set_bowler(client, message):
     chat_id = message.chat.id
@@ -656,44 +579,47 @@ async def set_bowler(client, message):
 
     if len(args) != 2 or not args[1].isdigit():
         return await message.reply_text(
-            "❓ <b>Usage:</b> <code>/bowling <number></code>", 
+            "❓ <b>Usage:</b> <code>/bowling <number></code>",
             parse_mode=ParseMode.HTML
         )
 
     idx = int(args[1]) - 1
-    
+
     match = ACTIVE_MATCHES.get(chat_id)
     if match and match.get("mode") == "Solo":
         return
 
     game = await get_active_game(chat_id)
     if not game:
-        return await message.reply_text("😕 <b>No match found.</b><br> /Start a game and unleash the bowlers 🎯", parse_mode=ParseMode.HTML)
+        return await message.reply_text(
+            "😕 <b>No match found.</b> /Start a game and unleash the bowlers 🎯",
+            parse_mode=ParseMode.HTML
+        )
 
-    game_id = game["game_id"]
+    game_id = str(game["game_id"])
     bowling_team = game["bowling_team"]
-    batting_team = game["batting_team"] 
+    batting_team = game["batting_team"]
+
+    await db.ensure_pool()
 
     try:
         batters, bowling_players_db, team_a_rows, team_b_rows = await asyncio.gather(
-            safe_fetch(
-                "SELECT user_id, role FROM game_players "
-                "WHERE game_id=$1 AND team=$2 AND role IN ('striker','non_striker')",
-                game_id, batting_team
-            ),
-            safe_fetch(
-                "SELECT user_id, is_captain, team FROM game_players "
-                "WHERE game_id=$1 AND team=$2 ORDER BY joined_at",
-                game_id, bowling_team
-            ),
-            safe_fetch(
-                "SELECT user_id FROM game_players WHERE game_id=$1 AND team='A'",
-                game_id
-            ),
-            safe_fetch(
-                "SELECT user_id FROM game_players WHERE game_id=$1 AND team='B'",
-                game_id
-            )
+            db.db["game_players"].find(
+                {"game_id": game_id, "team": batting_team, "role": {"$in": ["striker", "non_striker"]}},
+                {"user_id": 1, "role": 1}
+            ).to_list(length=10),
+            db.db["game_players"].find(
+                {"game_id": game_id, "team": bowling_team},
+                {"user_id": 1, "is_captain": 1, "team": 1}
+            ).sort("joined_at", 1).to_list(length=50),
+            db.db["game_players"].find(
+                {"game_id": game_id, "team": "A"},
+                {"user_id": 1}
+            ).to_list(length=50),
+            db.db["game_players"].find(
+                {"game_id": game_id, "team": "B"},
+                {"user_id": 1}
+            ).to_list(length=50)
         )
     except Exception as e:
         print(f"❌ DB Fetch Error (/bowling): {e}")
@@ -707,13 +633,13 @@ async def set_bowler(client, message):
 
     if not striker_id or not non_striker_id:
         return await message.reply_text(
-            f"🏏 <b>Batters not ready!</b>\nTeam <b>{batting_team}</b> must set both openers using <code>/batting</code> first.", 
+            f"🏏 <b>Batters not ready!</b>\nTeam <b>{batting_team}</b> must set both openers using <code>/batting</code> first.",
             parse_mode=ParseMode.HTML
         )
 
-    is_cap_or_host = (user.id == game["host_id"]) or any(p["user_id"] == user.id and p["is_captain"] for p in bowling_players_db)
+    is_cap_or_host = (user.id == game["host_id"]) or any(p["user_id"] == user.id and p.get("is_captain") for p in bowling_players_db)
     if not is_cap_or_host:
-        return await message.reply_text("🚫 <b>Captain or Host only.</b><br>Everyone else — grab popcorn 🍿", parse_mode=ParseMode.HTML)
+        return await message.reply_text("🚫 <b>Captain or Host only.</b> Everyone else — grab popcorn 🍿", parse_mode=ParseMode.HTML)
 
     if match and match.get("teams") and bowling_team in match["teams"]:
         team_players = match["teams"][bowling_team].get("players", [])
@@ -727,10 +653,10 @@ async def set_bowler(client, message):
 
     if match:
         if match.get("current_bowler"):
-            return await message.reply_text("⚾ <b>Ball already in hand.</b><br> Let this over finish first 👀", parse_mode=ParseMode.HTML)
+            return await message.reply_text("⚾ <b>Ball already in hand.</b> Let this over finish first 👀", parse_mode=ParseMode.HTML)
         if bowler_id == match.get("last_over_bowler"):
             last_name = match.get("last_over_bowler_name", "The previous bowler")
-            return await message.reply_text(f"🚫 <b>No back-to-back overs!</b><br> {last_name} needs a breather 😤", parse_mode=ParseMode.HTML)
+            return await message.reply_text(f"🚫 <b>No back-to-back overs!</b> {last_name} needs a breather 😤", parse_mode=ParseMode.HTML)
 
     try:
         bowler_user = await client.get_users(bowler_id)
@@ -742,13 +668,9 @@ async def set_bowler(client, message):
     if match:
         if client:
             match["client"] = client
-        
-        match.update({
-            "current_bowler": bowler_id,
-            "phase": "LIVE"
-        })
 
-        match["user_cache"][bowler_id] = bowler_user.first_name 
+        match.update({"current_bowler": bowler_id, "phase": "LIVE"})
+        match["user_cache"][bowler_id] = bowler_user.first_name
 
         match["players"].setdefault(bowler_id, {
             "runs": 0, "balls_faced": 0, "wickets": 0, "runs_conceded": 0,
@@ -773,4 +695,3 @@ async def set_bowler(client, message):
 
         from plugins.game.team.state import start_first_ball
         asyncio.create_task(start_first_ball(client, new_match))
-        

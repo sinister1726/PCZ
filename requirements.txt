@@ -25,3 +25,4 @@ pyrogram
 requests
 TgCrypto-pyrofork
 werkzeug==3.0.1
+motor

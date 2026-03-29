@@ -143,6 +143,14 @@ def _profile_buttons(uid: int) -> InlineKeyboardMarkup:
     ])
 
 
+async def _get_user_stats(uid: int):
+    try:
+        await db.ensure_pool()
+        return await db.db["user_stats"].find_one({"user_id": uid})
+    except Exception:
+        return None
+
+
 @Client.on_message(filters.command(["userinfo", "profile", "userstats"]))
 async def userinfo(client, message):
     current_time = time.time()
@@ -167,17 +175,14 @@ async def userinfo(client, message):
             return await message.reply_text(f"⏳ **Slow down!** Try again in {remaining:.1f}s")
         COOLDOWN[uid] = current_time
 
-    from utils.dbpass import safe_fetchrow
-
     try:
-        stats = await safe_fetchrow("SELECT * FROM user_stats WHERE user_id=$1", uid)
+        stats = await _get_user_stats(uid)
     except Exception:
         return await message.reply_text("⚠️ Database busy. Please try again in a moment.")
 
     if not stats:
         return await message.reply_text("❌ <b>No stats found</b>\nPlay some matches first!", parse_mode=ParseMode.HTML)
 
-    # Send loading sticker while card generates
     sticker_msg = None
     try:
         sticker_msg = await message.reply_sticker(LOADING_STICKER)
@@ -241,7 +246,6 @@ async def userinfo(client, message):
         f"#CricketLegacy | {date.today()}"
     )
 
-    # Generate dynamic profile card image
     try:
         from plugins.utilities.profile_card import generate_card, download_user_photo
         photo_bytes = await download_user_photo(client, uid)
@@ -277,10 +281,9 @@ CATEGORIES = {
 
 async def get_home_text(user):
     uid = user.id
-    from utils.dbpass import safe_fetchrow
-
     try:
-        stats = await safe_fetchrow("SELECT *, (SELECT COUNT(*) + 1 FROM user_stats WHERE runs > t.runs) as rank, CASE WHEN matches > 0 THEN (wins::float / matches * 100) ELSE 0 END as current_win_rate FROM user_stats t WHERE user_id = $1", uid)
+        await db.ensure_pool()
+        stats = await db.db["user_stats"].find_one({"user_id": uid})
     except Exception:
         return f"📊 <b>Welcome, <a href='tg://user?id={uid}'>{user.first_name}</a>!</b>\n\nDatabase warming up. Try again shortly."
 
@@ -288,15 +291,19 @@ async def get_home_text(user):
         return f"📊 <b>Welcome, <a href='tg://user?id={uid}'>{user.first_name}</a>!</b>\n\n⚠️ Your stats are being initialized.\nPlay at least one match and try again."
 
     name = stats.get("first_name") or user.first_name
-    win_rate = stats.get("current_win_rate", 0)
+    runs = stats.get("runs", 0)
+    rank = await db.db["user_stats"].count_documents({"runs": {"$gt": runs}}) + 1
+    matches = stats.get("matches", 0)
+    wins = stats.get("wins", 0)
+    win_rate = (wins / matches * 100) if matches > 0 else 0.0
 
     return (
         f"📊 <b>𝗪𝗲𝗹𝗰𝗼𝗺𝗲, <a href='tg://user?id={uid}'>{name}</a>!</b>\n"
-        f"🏅 <b>Global Rank:</b> #{int(stats['rank'])}\n"
+        f"🏅 <b>Global Rank:</b> #{rank}\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"
-        f"🏃 <b>Runs:</b> <code>{int(stats.get('runs', 0))}</code>\n"
+        f"🏃 <b>Runs:</b> <code>{int(runs)}</code>\n"
         f"⚾ <b>Wickets:</b> <code>{int(stats.get('wickets', 0))}</code>\n"
-        f"🎮 <b>Matches:</b> <code>{int(stats.get('matches', 0))}</code>\n"
+        f"🎮 <b>Matches:</b> <code>{int(matches)}</code>\n"
         f"🏅 <b>MOMs:</b> <code>{int(stats.get('moms', 0))}</code>\n"
         f"🧑‍✈️ <b>Captain Win Rate:</b> <code>{win_rate:.1f}%</code>\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"
@@ -310,50 +317,55 @@ async def build_rank_text(client, uid, category_key, offset=0):
     label, db_column = CATEGORIES[category_key]
     limit = 10
 
-    async with db.pool.acquire() as conn:
+    await db.ensure_pool()
+    col = db.db["user_stats"]
+    users_col = db.db["users"]
+
+    if category_key == "best_captain":
+        pipeline = [
+            {"$match": {"matches": {"$gt": 0}}},
+            {"$addFields": {"display_val": {"$cond": [{"$gt": ["$matches", 0]}, {"$multiply": [{"$divide": ["$wins", "$matches"]}, 100]}, 0]}}},
+            {"$sort": {"display_val": -1, "matches": -1}},
+            {"$skip": offset},
+            {"$limit": limit},
+        ]
+        count_match = {"matches": {"$gt": 0}}
+    else:
+        pipeline = [
+            {"$sort": {db_column: -1}},
+            {"$skip": offset},
+            {"$limit": limit},
+            {"$addFields": {"display_val": f"${db_column}"}},
+        ]
+        count_match = {}
+
+    top_players = await col.aggregate(pipeline).to_list(length=limit)
+    total = await col.count_documents(count_match)
+
+    user_stat = await col.find_one({"user_id": uid}, {"runs": 1, db_column: 1, "matches": 1, "wins": 1})
+    pos_text = "N/A"
+    if user_stat:
         if category_key == "best_captain":
-            query = """
-                SELECT s.user_id, COALESCE(u.name, s.first_name, 'Player') as player_name, 
-                       s.matches, (s.wins::float / NULLIF(s.matches, 0) * 100) as display_val 
-                FROM user_stats s
-                LEFT JOIN users u ON s.user_id = u.user_id
-                WHERE s.matches > 0 
-                ORDER BY display_val DESC NULLS LAST, s.matches DESC 
-                LIMIT $1 OFFSET $2
-            """
-            order_clause = "(wins::float / NULLIF(matches, 0)) DESC NULLS LAST"
-            where_clause = "WHERE matches > 0"
+            user_wr = (user_stat.get("wins", 0) / user_stat.get("matches", 1) * 100) if user_stat.get("matches", 0) > 0 else 0
+            above = await col.count_documents({"matches": {"$gt": 0}, "$expr": {"$gt": [{"$multiply": [{"$divide": ["$wins", "$matches"]}, 100]}, user_wr]}})
         else:
-            query = f"""
-                SELECT s.user_id, COALESCE(u.name, s.first_name, 'Player') as player_name, 
-                       s.matches, s.{db_column} as display_val 
-                FROM user_stats s
-                LEFT JOIN users u ON s.user_id = u.user_id
-                ORDER BY display_val DESC NULLS LAST 
-                LIMIT $1 OFFSET $2
-            """
-            order_clause = f"{db_column} DESC NULLS LAST"
-            where_clause = ""
+            above = await col.count_documents({db_column: {"$gt": user_stat.get(db_column, 0)}})
+        pos_text = f"{above + 1}/{total}"
 
-        top_players = await conn.fetch(query, limit, offset)
-
-        user_pos_query = f"SELECT position, total_count FROM (SELECT user_id, RANK() OVER (ORDER BY {order_clause}) as position, COUNT(*) OVER() as total_count FROM user_stats {where_clause}) as stats WHERE user_id = $1"
-        user_pos = await conn.fetchrow(user_pos_query, uid)
-
-    pos_text = f"{user_pos['position']}/{user_pos['total_count']}" if user_pos else "N/A"
     text = f"<b>{label}</b>\n🔹 Your Position: {pos_text}\n\n"
 
     if not top_players:
         return text + "<i>No data yet.</i>", 0
 
     for i, row in enumerate(top_players, start=offset + 1):
-        p_name = row["player_name"] # Ab yahan se asli naam aayega!
-        val = row["display_val"]
+        user_doc = await users_col.find_one({"user_id": row["user_id"]}, {"name": 1})
+        p_name = (user_doc or {}).get("name") or row.get("first_name") or "Player"
+        val = row.get("display_val", 0) or 0
         formatted_val = f"{val:.1f}%" if category_key == "best_captain" else f"{int(val)}"
-        text += f"{i}. <b>{p_name}</b> = <code>{formatted_val}</code> ({int(row['matches'])} matches)\n\n"
+        text += f"{i}. <b>{p_name}</b> = <code>{formatted_val}</code> ({int(row.get('matches', 0))} matches)\n\n"
 
-    return text, user_pos["total_count"] if user_pos else 0
-    
+    return text, total
+
 def get_main_menu():
     btns, row = [], []
     for key, (label, _) in CATEGORIES.items():
@@ -399,11 +411,10 @@ async def show_dna_callback(client, query: CallbackQuery):
     await query.answer()
     uid = int(query.data.split(":")[1])
 
-    from utils.dbpass import safe_fetchrow
     from plugins.utilities.personality import get_personality, DNA_PROFILES
 
     try:
-        stats = await safe_fetchrow("SELECT * FROM user_stats WHERE user_id=$1", uid)
+        stats = await _get_user_stats(uid)
     except Exception:
         await query.answer("DB error, try again.", show_alert=True)
         return
@@ -470,8 +481,8 @@ async def show_duel_callback(client, query: CallbackQuery):
     uid = int(query.data.split(":")[1])
 
     try:
-        async with db.pool.acquire() as conn:
-            row = await conn.fetchrow("SELECT * FROM duel_stats WHERE user_id=$1", uid)
+        await db.ensure_pool()
+        row = await db.db["duel_stats"].find_one({"user_id": uid})
     except Exception:
         await query.answer("DB error, try again.", show_alert=True)
         return
@@ -528,10 +539,8 @@ async def back_profile_callback(client, query: CallbackQuery):
     await query.answer()
     uid = int(query.data.split(":")[1])
 
-    from utils.dbpass import safe_fetchrow
-
     try:
-        stats = await safe_fetchrow("SELECT * FROM user_stats WHERE user_id=$1", uid)
+        stats = await _get_user_stats(uid)
     except Exception:
         await query.answer("DB error.", show_alert=True)
         return
@@ -564,8 +573,8 @@ async def back_profile_callback(client, query: CallbackQuery):
     bowl_avg = (runs_conceded / wickets) if wickets > 0 else 0.0
     bowl_sr = (balls_bowled / wickets) if wickets > 0 else 0.0
     win_rate = (won / matches * 100) if matches > 0 else 0.0
-    mister = calculate_title(dict(stats))
-    performance_score, tier = calculate_rank(dict(stats))
+    mister = calculate_title(stats)
+    performance_score, tier = calculate_rank(stats)
     form_display = _format_form(stats.get("recent_form", ""))
 
     caption = (
@@ -605,4 +614,3 @@ async def back_profile_callback(client, query: CallbackQuery):
         await query.message.edit_caption(caption=caption, parse_mode=ParseMode.HTML, reply_markup=_profile_buttons(uid))
     except Exception:
         await query.message.edit_text(caption, parse_mode=ParseMode.HTML, reply_markup=_profile_buttons(uid))
-
