@@ -4,17 +4,30 @@ from pyrogram.enums import ParseMode
 from pyrogram.errors import MessageNotModified 
 from Assets.files import START_IMAGE_GROUP
 from database.games import is_game_active
+ALLOWED_GROUP_ID = -1003692127639
+SUPPORT_GROUP = "@CLG_fun_zone"
+
 
 @Client.on_message(filters.command("start") & filters.group)
 async def start_game(client, message):
     chat_id = message.chat.id
 
+    # 🔒 Restrict to only allowed group
+    if chat_id != ALLOWED_GROUP_ID:
+        return await message.reply_text(
+            "🚧 <b>Bot is under maintenance</b>\n"
+            f"Visit support group {SUPPORT_GROUP}",
+            parse_mode=ParseMode.HTML
+        )
+
+    # ✅ Check if game already running
     if await is_game_active(chat_id):
         return await message.reply_text(
             "⚠️ <b>Game already running</b>\nFinish it first 🏏",
             parse_mode=ParseMode.HTML
         )
 
+    # 🎮 Buttons
     buttons = InlineKeyboardMarkup(
         [
             [
@@ -30,24 +43,29 @@ async def start_game(client, message):
         ]
     )
 
+    # 📝 Caption
     caption = (
         "🎮 <b>SELECT MODE</b>\n"
         "Choose how you want to play today 👇\n\n"
         "⚔️ <i>1v1 Duel — tap to open bot DM and queue!</i>"
     )
 
+    # 📸 Check media permission
     can_send_media = False
     try:
         me = await client.get_me()
         member = await client.get_chat_member(chat_id, me.id)
+
         if member.status.name == "ADMINISTRATOR":
             perms = getattr(member.privileges, "can_send_media_messages", True)
             can_send_media = perms is not False
         else:
             can_send_media = True
+
     except Exception:
         can_send_media = True
 
+    # 📤 Send photo if allowed
     if can_send_media:
         try:
             await message.reply_photo(
@@ -60,8 +78,13 @@ async def start_game(client, message):
         except Exception:
             pass
 
-    await message.reply_text(caption, parse_mode=ParseMode.HTML, reply_markup=buttons)
-
+    # 📤 Fallback text
+    await message.reply_text(
+        caption,
+        parse_mode=ParseMode.HTML,
+        reply_markup=buttons
+    )
+    
 @Client.on_callback_query(filters.regex("^mode_cancel$"))
 async def cancel_start(client, query):
     await query.answer("Cancelled")
