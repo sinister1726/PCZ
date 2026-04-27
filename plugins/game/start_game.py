@@ -1,21 +1,30 @@
-"""Group game entry: `/play` opens the mode picker.
+"""Group game entry: `/start` (and aliases `/play`, `/newgame`) open the
+mode picker — Team / Solo / 1v1 Duel.
 
-`/start` in groups is intentionally NOT a game entry anymore — it just nudges
-users to open the bot DM. `/duel` in groups also redirects to DM (1v1 only
-runs in DM). Use `/play` in the group to bring up the team / solo picker.
+When global maintenance mode is ON, the maintenance gate in
+`plugins/admin/maintenance.py` intercepts these commands and shows the
+"Bot is under maintenance" notice instead.
 """
 
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
-from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.errors import MessageNotModified
+from pyrogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InputMediaPhoto,
+)
 
 from Assets.files import START_IMAGE_GROUP
-from config import Config
 from database.games import is_game_active
 
 
-_BOT_USERNAME = Config.BOT_USERNAME.lstrip("@")
-_DM_LINK = f"https://t.me/{_BOT_USERNAME}"
+PICKER_CAPTION = (
+    "🎮 <b>SELECT MODE</b>\n"
+    "──┈┄┄╌╌╌╌┄┄┈──\n"
+    "Choose how you want to play 👇\n\n"
+    "⚔️ <i>1v1 Duel runs in the bot DM — tap to queue.</i>"
+)
 
 
 def _mode_buttons() -> InlineKeyboardMarkup:
@@ -26,19 +35,11 @@ def _mode_buttons() -> InlineKeyboardMarkup:
                 InlineKeyboardButton("👤 Solo", callback_data="mode_solo"),
             ],
             [
-                InlineKeyboardButton(
-                    "⚔️ 1v1 Duel (DM)",
-                    url=f"{_DM_LINK}?start=duel",
-                ),
+                InlineKeyboardButton("⚔️ 1v1 Duel", callback_data="mode_duel"),
             ],
             [InlineKeyboardButton("✖ Cancel", callback_data="mode_cancel")],
         ]
     )
-
-
-def _dm_redirect_buttons(payload: str = "") -> InlineKeyboardMarkup:
-    url = f"{_DM_LINK}?start={payload}" if payload else _DM_LINK
-    return InlineKeyboardMarkup([[InlineKeyboardButton("📩 Open bot in DM", url=url)]])
 
 
 async def _bot_can_send_media(client: Client, chat_id: int) -> bool:
@@ -52,44 +53,21 @@ async def _bot_can_send_media(client: Client, chat_id: int) -> bool:
         return True
 
 
-# ─── /start in groups → DM redirect (not a game entry anymore) ───────────────
-
-@Client.on_message(filters.command("start") & filters.group)
-async def start_in_group(client: Client, message):
-    await message.reply_text(
-        "👋 <b>Hey!</b>\n"
-        "──┈┄┄╌╌╌╌┄┄┈──\n"
-        "<code>/start</code> works in <b>my DM</b>.\n"
-        "To start a match here, use <code>/play</code> 🏏",
-        parse_mode=ParseMode.HTML,
-        reply_markup=_dm_redirect_buttons(),
-    )
-
-
-# ─── /play → mode picker (the old /start behavior) ───────────────────────────
-
-@Client.on_message(filters.command(["play", "newgame"]) & filters.group)
-async def play_cmd(client: Client, message):
+async def _send_mode_picker(client: Client, message) -> None:
     chat_id = message.chat.id
 
     if await is_game_active(chat_id):
-        return await message.reply_text(
+        await message.reply_text(
             "⚠️ <b>Game already running</b>\nFinish the current match first 🏏",
             parse_mode=ParseMode.HTML,
         )
-
-    caption = (
-        "🎮 <b>SELECT MODE</b>\n"
-        "──┈┄┄╌╌╌╌┄┄┈──\n"
-        "Choose how you want to play 👇\n\n"
-        "⚔️ <i>1v1 Duel runs in the bot DM — tap the button to queue.</i>"
-    )
+        return
 
     if await _bot_can_send_media(client, chat_id):
         try:
             await message.reply_photo(
                 photo=START_IMAGE_GROUP,
-                caption=caption,
+                caption=PICKER_CAPTION,
                 parse_mode=ParseMode.HTML,
                 reply_markup=_mode_buttons(),
             )
@@ -98,11 +76,27 @@ async def play_cmd(client: Client, message):
             pass
 
     await message.reply_text(
-        caption,
+        PICKER_CAPTION,
         parse_mode=ParseMode.HTML,
         reply_markup=_mode_buttons(),
     )
 
+
+# ─── /start in groups → mode picker ──────────────────────────────────────────
+
+@Client.on_message(filters.command("start") & filters.group)
+async def start_in_group(client: Client, message):
+    await _send_mode_picker(client, message)
+
+
+# ─── /play and /newgame aliases ──────────────────────────────────────────────
+
+@Client.on_message(filters.command(["play", "newgame"]) & filters.group)
+async def play_cmd(client: Client, message):
+    await _send_mode_picker(client, message)
+
+
+# ─── callbacks ───────────────────────────────────────────────────────────────
 
 @Client.on_callback_query(filters.regex("^mode_cancel$"))
 async def cancel_start(client, query):
@@ -114,3 +108,28 @@ async def cancel_start(client, query):
         except Exception:
             pass
     await query.answer("Cancelled")
+
+
+@Client.on_callback_query(filters.regex("^mode_back$"))
+async def back_to_start(client, query):
+    await query.answer()
+    try:
+        await query.message.edit_media(
+            media=InputMediaPhoto(
+                media=START_IMAGE_GROUP,
+                caption=PICKER_CAPTION,
+                parse_mode=ParseMode.HTML,
+            ),
+            reply_markup=_mode_buttons(),
+        )
+    except MessageNotModified:
+        pass
+    except Exception:
+        try:
+            await query.message.edit_text(
+                PICKER_CAPTION,
+                parse_mode=ParseMode.HTML,
+                reply_markup=_mode_buttons(),
+            )
+        except Exception:
+            pass
