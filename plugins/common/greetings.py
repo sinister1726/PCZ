@@ -6,7 +6,7 @@ from database.groups import add_group, total_groups
 from config import Config
 
 
-OWNER_ID = 8585494095
+OWNER_ID = next(iter(Config.OWNER_IDS))
 OWNER_NAME = "⏤͟͞𝗗𝗥𝗘𝗫𝗢〆"
 
 @Client.on_chat_member_updated()

@@ -27,6 +27,25 @@ A Telegram bot for cricket-based group games with a Flask web log dashboard.
 - **Event/Tournament system** — `/start_event`, `/register`, `/deregister`, `/list_events`, `/event_players`, `/end_event`
 - **Broadcast upgrade** — `/broadcast` now offers Forward (with label) or Copy (clean, no label) modes via inline buttons
 
+## Owner Panel
+
+Owner is centralized in `Config.OWNER_IDS` (currently `8186068163`). Other modules read from `Config.OWNER_IDS` instead of hardcoding.
+
+Owner-only commands (handled in `plugins/admin/owner_panel.py`):
+- `/owner` — interactive owner control panel (inline buttons)
+- `/dbbackup all|<collection> [<more>...]` — export Mongo collections to JSON files (sent in chat)
+- `/dbstats` — collection counts, total docs, data/storage size
+- `/dbcollections` — list all Mongo collection names
+- `/serverinfo` — host, OS, Python, CPU, load avg, memory, disk
+- `/uptime` — bot uptime
+- `/restart` — restart the bot process (with confirm button)
+- `/logs [n]` — tail recent in-memory logs (best-effort)
+
+DB transfer (`plugins/admin/transfer.py`):
+- `/transfer postgres://…` — Postgres → Mongo migration; **also dumps each migrated collection to a JSON file in the chat**
+- `/dbtrans <collection>` — generic JSON file → Mongo importer (reply to a JSON file)
+- `/import_stats` — legacy stats-aware merger that imports a JSON of `total_stats` records into `user_stats` (renamed from the old `/dbtrans` to avoid conflict)
+
 ## Technologies
 
 - **Language:** Python 3.12

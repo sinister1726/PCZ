@@ -20,7 +20,7 @@ from database.mods import (
     is_mod
 )
 
-OWNER_ID = 8294062042
+OWNER_ID = next(iter(Config.OWNER_IDS))
 BROADCAST_CACHE = {}
 BROADCAST_RUNNING = False
 BROADCAST_CANCEL = False
@@ -416,8 +416,8 @@ async def broad_callback(client, cb):
         parse_mode=ParseMode.HTML
     )
     
-@Client.on_message(filters.command("dbtrans"))
-async def dbtrans_cmd(client, message):
+@Client.on_message(filters.command("import_stats"))
+async def import_stats_cmd(client, message):
     import json
     import asyncio
 
@@ -427,7 +427,9 @@ async def dbtrans_cmd(client, message):
     if not message.reply_to_message or not message.reply_to_message.document:
         return await message.reply_text(
             "📂 Reply to a JSON file containing user stats to import.\n\n"
-            "<b>Format:</b> Each line is a JSON object, or a single JSON array <code>[{...}, {...}]</code>",
+            "<b>Format:</b> Each line is a JSON object, or a single JSON array <code>[{...}, {...}]</code>\n\n"
+            "ℹ️ This is the legacy <b>stats-aware merger</b>. For generic JSON → Mongo "
+            "imports use <code>/dbtrans &lt;collection&gt;</code>.",
             parse_mode=ParseMode.HTML
         )
 

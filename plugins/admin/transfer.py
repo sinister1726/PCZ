@@ -1,12 +1,21 @@
 import asyncio
 import html
+import json
 from datetime import datetime
+from io import BytesIO
 
 from pyrogram import Client, filters
 from pyrogram.enums import ParseMode
 
 from config import Config
 from database.connection import db
+
+
+def _json_default(obj):
+    if isinstance(obj, datetime):
+        return {"$date": obj.isoformat()}
+    return str(obj)
+
 
 OWNER_FILTER = filters.user(list(Config.OWNER_IDS))
 
@@ -167,6 +176,8 @@ async def transfer_cmd(client, message):
         total_skipped = 0
         results_text = "📊 <b>Migration Results:</b>\n\n"
 
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+
         for col_name, config in COLLECTIONS_MAP.items():
             try:
                 await status.edit_text(
@@ -184,6 +195,22 @@ async def transfer_cmd(client, message):
                 results_text += f"⚠️ <code>{col_name}</code>: {html.escape(err)}\n"
             else:
                 results_text += f"✅ <code>{col_name}</code>: +{added} added, {skipped} skipped\n"
+
+            try:
+                docs = await db.db[col_name].find({}, {"_id": 0}).to_list(length=None)
+                payload = json.dumps(docs, default=_json_default, ensure_ascii=False, indent=2)
+                bio = BytesIO(payload.encode("utf-8"))
+                bio.name = f"{col_name}_{timestamp}.json"
+                await message.reply_document(
+                    document=bio,
+                    caption=(
+                        f"📂 <b>{html.escape(col_name)}</b> snapshot\n"
+                        f"📊 Docs: <code>{len(docs)}</code>"
+                    ),
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception as e:
+                results_text += f"   📁 dump failed: {html.escape(str(e)[:60])}\n"
 
             await asyncio.sleep(0.2)
 

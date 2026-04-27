@@ -10,7 +10,7 @@ class Config:
     BOT_USERNAME = "@CricketLegacy2Bot"
     SUPPORT_GROUP = "https://t.me/+joF1bCfiMT9jMzVh"
     PLAY_ZONE_INFO = "https://t.me/+joF1bCfiMT9jMzVh"
-    OWNER_IDS = {8585494095}
+    OWNER_IDS = {8186068163}
     GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
     UPSTREAM_REPO = f"https://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@github.com/drexocoder-source/Cricsssketlegssacys"
     NVIDIA_API_KEY = "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"

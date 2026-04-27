@@ -7,9 +7,10 @@ from pyrogram import Client, filters
 from database.users import total_users
 from database.groups import total_groups
 from database.connection import db
+from config import Config
 
 FONT_PATH = "Assets/fonts.ttf"
-OWNER_ID = 8294062042
+OWNER_ID = next(iter(Config.OWNER_IDS))
 BOT_START_TIME = time.time()
 
 BG_COLOR = (14, 10, 20)

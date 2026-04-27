@@ -10,6 +10,7 @@ from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.enums import ParseMode
 from database.connection import db
 from Assets.files import ACHIEVE_IMG
+from config import Config
 
 NVIDIA_API_KEY = "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"
 PAGE_SIZE = 6
@@ -180,7 +181,7 @@ async def achievements_callback(client, cb):
         await cb.message.edit_caption(caption=text, parse_mode=ParseMode.HTML, reply_markup=kb)
 
 
-OWNER_ID = 8294062042
+OWNER_ID = next(iter(Config.OWNER_IDS))
 
 
 def extract_json_array(text: str) -> str:
