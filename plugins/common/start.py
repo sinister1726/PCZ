@@ -81,7 +81,7 @@ async def start_cmd(client: Client, message):
         except Exception:
             pass
 
-@Client.on_message(filters.private & ~filters.command([]), group=1)
+@Client.on_message(filters.private & filters.text & ~filters.regex(r"^/"), group=1)
 async def auto_register_user(client: Client, message):
     user = message.from_user
     if not user:
