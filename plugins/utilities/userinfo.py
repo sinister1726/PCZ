@@ -411,8 +411,7 @@ async def show_dna_callback(client, query: CallbackQuery):
     await query.answer()
     uid = int(query.data.split(":")[1])
 
-    from plugins.utilities.analyze import _get_personality as get_personality
-    DNA_PROFILES = {
+    _DNA_PROFILES = {
         "Powerhouse 💪": {"tagline": "Run-machine. The scoreboard belongs to you.", "trait": "Unstoppable batting dominance.", "tip": "Keep piling runs — centuries are your calling card.", "color": "🔴"},
         "Aggressive ⚔️": {"tagline": "Big swings, bigger boundaries.", "trait": "High-octane strike rate with explosive hitting.", "tip": "Channel the aggression — six every over is the goal.", "color": "🟠"},
         "Spin Wizard 🌀": {"tagline": "Batters can't read you. That's the point.", "trait": "Low economy, high wickets — bowling is your art.", "tip": "Stay patient, vary pace, and watch them crumble.", "color": "🟣"},
@@ -420,6 +419,29 @@ async def show_dna_callback(client, query: CallbackQuery):
         "Finisher 🏆": {"tagline": "Best when the match is on the line.", "trait": "Top win rate and Man of the Match performances.", "tip": "Keep delivering in pressure moments.", "color": "🟡"},
         "Lucky Charm 🍀": {"tagline": "Unpredictable, chaotic, but somehow it works.", "trait": "Rising star — personality still forming.", "tip": "Play more matches to unlock your true potential.", "color": "🟢"},
     }
+
+    def get_personality(s: dict) -> str:
+        runs = int(s.get("runs") or 0); wickets = int(s.get("wickets") or 0)
+        balls_faced = int(s.get("balls_faced") or 0); balls_bowled = int(s.get("balls_bowled") or 0)
+        runs_conceded = int(s.get("runs_conceded") or 0); matches = max(int(s.get("matches") or 1), 1)
+        wins = int(s.get("wins") or 0); sixes = int(s.get("sixes") or 0)
+        fours = int(s.get("fours") or 0); centuries = int(s.get("centuries") or 0)
+        moms = int(s.get("moms") or 0); ducks = int(s.get("ducks") or 0)
+        if matches < 3: return "Lucky Charm 🍀"
+        sr = (runs / balls_faced * 100) if balls_faced > 0 else 0.0
+        eco = (runs_conceded / (balls_bowled / 6)) if balls_bowled > 0 else 99.0
+        avg = runs / matches; win_rate = wins / matches * 100
+        scores = {
+            "Powerhouse 💪": (runs / 80) + (centuries * 6) + (sixes * 0.4),
+            "Aggressive ⚔️": (sr / 8) + (sixes * 1.8) + (fours * 0.5),
+            "Spin Wizard 🌀": (wickets * 3.5) + max(0.0, (9 - eco) * 5),
+            "Strategic 🧠": (avg * 1.5) + max(0.0, (6 - ducks) * 4) + max(0.0, (8 - eco) * 1.5),
+            "Finisher 🏆": (win_rate * 0.9) + (moms * 9),
+            "Lucky Charm 🍀": 4.0,
+        }
+        return max(scores, key=scores.get)
+
+    DNA_PROFILES = _DNA_PROFILES
 
     try:
         stats = await _get_user_stats(uid)
