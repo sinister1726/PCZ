@@ -350,7 +350,7 @@ async def batter_handler(client, message):
         await try_send_video(client, chat_id, str(runs), caption)
         await advance_ball(match, runs)
 
-@Client.on_message(filters.command(["score", "userinfo", "graph"]) & filters.group, group=-1)
+@Client.on_message(filters.command(["score", "graph"]) & filters.group, group=-1)
 async def check_cooldown(client, message):
     chat_id = message.chat.id
     now = time.time()

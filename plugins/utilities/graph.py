@@ -100,6 +100,15 @@ async def get_graph_buffer(match):
     return await loop.run_in_executor(_EXECUTOR, _build_graph_sync, snapshot)
 
 
+@Client.on_message(filters.command("graph") & filters.private)
+async def graph_dm_redirect(client, message):
+    await message.reply_text(
+        "📊 <b>/graph only works in a group</b> where a live team match is running.\n\n"
+        "Use it in the group chat to see the score worm chart.",
+        parse_mode="html",
+    )
+
+
 @Client.on_message(filters.command("graph") & filters.group)
 async def score_graph(client, message):
     chat_id = message.chat.id

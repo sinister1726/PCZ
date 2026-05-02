@@ -31,9 +31,9 @@ GAME_COMMANDS = [
     "joingame", "leavegame", "extend", "forcestart",
     # team
     "create_teams", "rejointeams", "join_teamA", "join_teamB",
-    "members", "teams", "add", "remove", "shiftteam", "testmem",
+    "members", "teams", "add", "remove", "shiftteam",
     "changehost", "changecap", "choose_cap", "set_overs",
-    "batting", "bowling", "score", "userinfo", "graph",
+    "batting", "bowling", "score", "graph",
     "restore", "change_side", "changeside", "endgame",
     # events
     "register", "deregister", "list_events", "events",
@@ -54,7 +54,7 @@ async def _send_maintenance_notice(client: Client, message) -> None:
 # ─── intercept handler (runs before everything else) ─────────────────────────
 
 @Client.on_message(
-    filters.command(GAME_COMMANDS) & ~OWNER_FILTER,
+    filters.command(GAME_COMMANDS) & filters.group & ~OWNER_FILTER,
     group=-10,
 )
 async def maintenance_gate(client: Client, message):
