@@ -6,7 +6,7 @@ from config import Config
 from database.users import add_user, total_users
 
 PLAYZONE_LINK = "https://t.me/CLG_fun_zone"
-SUPPORT_LINK = "https://t.me/Nexxxxxo_bots"
+SUPPORT_LINK = "https://t.me/Legacynewzz"
 
 START_MOODS = [
     "🏏 𝗪𝗲𝗹𝗰𝗼𝗺𝗲, 𝗖𝗮𝗽𝘁𝗮𝗶𝗻!",
@@ -34,9 +34,9 @@ async def start_cmd(client: Client, message):
         f"{mood}\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n\n"
         f"👤 <b>{first_name}</b>, welcome to <b>Cricket Legacy</b> ✨\n\n"
-        "🏏 <b>Cricket Legacy v2</b>\n"
-        "🚧 <i>Beta Launch</i>\n\n"
-        "🎮 Play epic team matches\n"
+        "🏏 <b>Cricket Legacy v2</b>\n\n"
+        "🎮 Play epic team & solo matches\n"
+        "⚔️ Challenge rivals in 1v1 Duel\n"
         "📊 Track stats & achievements\n"
         "🎙 Live match vibes & action\n\n"
         "🐞 Found a bug?\n"
@@ -47,15 +47,11 @@ async def start_cmd(client: Client, message):
     buttons = InlineKeyboardMarkup([
         [
             InlineKeyboardButton("ʟᴇɢᴀᴄʏ ᴘʟᴀʏᴢᴏɴᴇ 🏏", url=PLAYZONE_LINK),
-            InlineKeyboardButton("🆘 ꜱᴜᴘᴘᴏʀᴛ", url=SUPPORT_LINK)
-        ],
-        [
-            InlineKeyboardButton("🎵 ᴍᴜꜱɪᴄ", url="https://t.me/KingxMusicRo_BOT"),
-            InlineKeyboardButton("🏏 ᴀᴜᴄᴛɪᴏɴ & ʀᴇɢɪꜱᴛʀᴀᴛɪᴏɴ", url="https://t.me/NexAuc_Robot")
+            InlineKeyboardButton("🆘 ꜱᴜᴘᴘᴏʀᴛ", url=SUPPORT_LINK),
         ],
         [
             InlineKeyboardButton("➕ ᴀᴅᴅ ᴛᴏ ɢʀᴏᴜᴘ", url=f"https://t.me/{Config.BOT_USERNAME.replace('@','')}?startgroup=true")
-        ]
+        ],
     ])
 
     try:
