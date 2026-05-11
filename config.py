@@ -1,20 +1,52 @@
 import os
 
+
 class Config:
-    API_ID = 25887786
-    API_HASH = "e4201277f5f2883f22c150167bd24479"
-    BOT_TOKEN = "8294115440:AAGfh6UVssTcn_eeAdpKX1SiaU8RTZfy1wA"
+    # Telegram API
+    API_ID = int(os.getenv("API_ID", "25887786"))
+    API_HASH = os.getenv("API_HASH", "e4201277f5f2883f22c150167bd24479")
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
-    MONGO_URL = "mongodb+srv://bsdk:betichod@cluster0.fgj1r9z.mongodb.net/Cricketlegacy?retryWrites=true&w=majority"
+    # Database
+    MONGO_URL = os.getenv(
+        "MONGO_URL",
+        "mongodb+srv://bsdk:betichod@cluster0.fgj1r9z.mongodb.net/Cricketlegacy?retryWrites=true&w=majority"
+    )
 
-    BOT_USERNAME = "@CricketLegacy2Bot"
-    SUPPORT_GROUP = "https://t.me/+joF1bCfiMT9jMzVh"
-    PLAY_ZONE_INFO = "https://t.me/+joF1bCfiMT9jMzVh"
-    OWNER_IDS = {8186068163}
+    # Bot Info
+    BOT_USERNAME = os.getenv("BOT_USERNAME", "@CricketLegacy2Bot")
+    SUPPORT_GROUP = os.getenv(
+        "SUPPORT_GROUP",
+        "https://t.me/+joF1bCfiMT9jMzVh"
+    )
+    PLAY_ZONE_INFO = os.getenv(
+        "PLAY_ZONE_INFO",
+        "https://t.me/+joF1bCfiMT9jMzVh"
+    )
+
+    # Owners
+    OWNER_IDS = {
+        int(x)
+        for x in os.getenv("OWNER_IDS", "8186068163").split()
+    }
+
+    # GitHub
     GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-    UPSTREAM_REPO = f"https://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@github.com/drexocoder-source/Cricsssketlegssacys"
-    NVIDIA_API_KEY = "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"
+    UPSTREAM_REPO = os.getenv(
+        "UPSTREAM_REPO",
+        "https://github.com/drexocoder-source/Cricsssketlegssacys"
+    )
 
-    START_IMAGE = "https://graph.org/file/a37d935e98e4c92e04cee-c1871cfafb3f808563.jpg"
+    # AI / NVIDIA
+    NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "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")
 
-    LOG_CHANNEL = -1003692127639
+    # Images
+    START_IMAGE = os.getenv(
+        "START_IMAGE",
+        "https://graph.org/file/a37d935e98e4c92e04cee-c1871cfafb3f808563.jpg"
+    )
+
+    # Logs
+    LOG_CHANNEL = int(
+        os.getenv("LOG_CHANNEL", "-1003692127639")
+    )
