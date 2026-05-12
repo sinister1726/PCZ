@@ -30,4 +30,12 @@ async def migrate():
         upsert=True
     )
 
+    await database["group_settings"].create_index("chat_id", unique=True)
+    await database["premium_groups"].create_index("chat_id", unique=True)
+    await database["venue_stats"].create_index([("user_id", 1), ("chat_id", 1)], unique=True)
+    await database["venue_stats"].create_index([("chat_id", 1), ("runs", -1)])
+    await database["venue_stats"].create_index([("user_id", 1), ("runs", -1)])
+    await database["venue_stats"].create_index("runs")
+    await database["venue_stats"].create_index("wickets")
+
     print("✅ MongoDB indexes created. Database migration complete.")

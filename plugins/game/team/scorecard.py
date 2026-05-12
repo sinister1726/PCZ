@@ -390,4 +390,21 @@ async def save_match_stats(match, winner_team):
                 {"user_id": pid},
                 {"$max": {"best_partnership": partnership_runs}}
             )
+
+    try:
+        from database.venue_stats import update_venue_stats
+        chat_id    = match.get("chat_id")
+        chat_title = match.get("chat_title") or match.get("group_name") or f"Group"
+        if chat_id:
+            for uid, p in players.items():
+                await update_venue_stats(
+                    uid,
+                    chat_id,
+                    chat_title,
+                    p.get("runs", 0),
+                    p.get("wickets", 0),
+                )
+    except Exception as _ve:
+        print(f"Venue stats save error: {_ve}")
+
     print(f"✅ Match {game_id} full stats and milestones saved.")

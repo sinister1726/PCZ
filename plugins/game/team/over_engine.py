@@ -369,12 +369,18 @@ async def advance_ball(match, result):
                 s = match.get("striker")
                 ns = match.get("non_striker")
                 if s and ns:
-                    for value in (50, 100):
-                        key = tuple(sorted((s, ns)) + [value])
-                        if match["partnership"] >= value and key not in match["announced_achievements"]["partnerships"]:
-                            match["announced_achievements"]["partnerships"].add(key)
-                            msg = {50: "Nice stand 🤝 {p1} & {p2} cross 50", 100: "CENTURY STAND 💯 {p1} & {p2} are unstoppable!"}
-                            await client.send_message(chat_id, f"🏆 <b>Achievement!</b>\n<i>{msg[value].format(p1=_mention(s, match), p2=_mention(ns, match))}</i>", parse_mode=ParseMode.HTML)
+                    try:
+                        from database.group_settings import get_setting as _gs
+                        _alerts_on = await _gs(chat_id, "achievement_alerts")
+                    except Exception:
+                        _alerts_on = True
+                    if _alerts_on:
+                        for value in (50, 100):
+                            key = tuple(sorted((s, ns)) + [value])
+                            if match["partnership"] >= value and key not in match["announced_achievements"]["partnerships"]:
+                                match["announced_achievements"]["partnerships"].add(key)
+                                msg = {50: "Nice stand 🤝 {p1} & {p2} cross 50", 100: "CENTURY STAND 💯 {p1} & {p2} are unstoppable!"}
+                                await client.send_message(chat_id, f"🏆 <b>Achievement!</b>\n<i>{msg[value].format(p1=_mention(s, match), p2=_mention(ns, match))}</i>", parse_mode=ParseMode.HTML)
 
             if actual_striker in match["players"]:
                 p = match["players"][actual_striker]
@@ -382,13 +388,19 @@ async def advance_ball(match, result):
                 p["balls_faced"] += 1
                 
                 if has_client:
-                    announced = match["announced_achievements"]["batting"].setdefault(actual_striker, set())
-                    _bat_lines = {50: "{p} brings up a classy 50 🏏", 100: "CENTURY 💯 {p} is on fire!", 150: "150 up 😬 Domination by {p}", 250: "🚨 HISTORY 🚨 {p} smashes 250!"}
-                    for milestone in (50, 100, 150, 250):
-                        if p["runs"] >= milestone and milestone not in announced:
-                            announced.add(milestone)
-                            caption = f"🏆 <b>Achievement!</b>\n<i>{_bat_lines[milestone].format(p=_mention(actual_striker, match))}</i>"
-                            asyncio.create_task(_send_achievement_media(client, chat_id, f"BAT_{milestone}", caption))
+                    try:
+                        from database.group_settings import get_setting as _gs
+                        _bat_alerts = await _gs(chat_id, "achievement_alerts")
+                    except Exception:
+                        _bat_alerts = True
+                    if _bat_alerts:
+                        announced = match["announced_achievements"]["batting"].setdefault(actual_striker, set())
+                        _bat_lines = {50: "{p} brings up a classy 50 🏏", 100: "CENTURY 💯 {p} is on fire!", 150: "150 up 😬 Domination by {p}", 250: "🚨 HISTORY 🚨 {p} smashes 250!"}
+                        for milestone in (50, 100, 150, 250):
+                            if p["runs"] >= milestone and milestone not in announced:
+                                announced.add(milestone)
+                                caption = f"🏆 <b>Achievement!</b>\n<i>{_bat_lines[milestone].format(p=_mention(actual_striker, match))}</i>"
+                                asyncio.create_task(_send_achievement_media(client, chat_id, f"BAT_{milestone}", caption))
 
                 if runs == 4: p["fours_count"] = p.get("fours_count", 0) + 1
                 elif runs == 6: p["sixes_count"] = p.get("sixes_count", 0) + 1
@@ -441,13 +453,19 @@ async def advance_ball(match, result):
                 p["balls_faced"] += 1
                 p["is_out"] = True
                 if has_client and p.get("runs", 0) == 0:
-                    duck_text = random.choice([
-                        "🦆 DUCK! {p} walks back without troubling the scorer.",
-                        "🦆 Zero! {p} couldn't even get off the mark!",
-                        "🦆 Golden duck for {p}. The bowling attack is celebrating 🎉",
-                        "🦆 Out for a DUCK! {p} needs to hit the nets hard.",
-                    ]).format(p=_mention(actual_striker, match))
-                    asyncio.create_task(_send_achievement_media(client, chat_id, "DUCK", f"🦆 <b>Duck!</b>\n<i>{duck_text}</i>"))
+                    try:
+                        from database.group_settings import get_setting as _gs
+                        _duck_alert = await _gs(chat_id, "achievement_alerts")
+                    except Exception:
+                        _duck_alert = True
+                    if _duck_alert:
+                        duck_text = random.choice([
+                            "🦆 DUCK! {p} walks back without troubling the scorer.",
+                            "🦆 Zero! {p} couldn't even get off the mark!",
+                            "🦆 Golden duck for {p}. The bowling attack is celebrating 🎉",
+                            "🦆 Out for a DUCK! {p} needs to hit the nets hard.",
+                        ]).format(p=_mention(actual_striker, match))
+                        asyncio.create_task(_send_achievement_media(client, chat_id, "DUCK", f"🦆 <b>Duck!</b>\n<i>{duck_text}</i>"))
 
             try:
                 from database.connection import db
@@ -461,17 +479,23 @@ async def advance_ball(match, result):
                 b["wickets"] = b.get("wickets", 0) + 1
                 
                 if has_client:
-                    announced = match["announced_achievements"]["bowling"].setdefault(bowler_id, set())
-                    if b["wickets"] in (3, 5) and b["wickets"] not in announced:
-                        announced.add(b["wickets"])
-                        _bowl_msgs = {3: "{p} picks up a 3-fer 🎯", 5: "FIVE-FOR 🖐️ {p} destroys the batting!"}
-                        caption = f"🏆 <b>Achievement!</b>\n<i>{_bowl_msgs[b['wickets']].format(p=_mention(bowler_id, match))}</i>"
-                        asyncio.create_task(_send_achievement_media(client, chat_id, f"BOWL_{b['wickets']}", caption))
+                    try:
+                        from database.group_settings import get_setting as _gs
+                        _bowl_alerts = await _gs(chat_id, "achievement_alerts")
+                    except Exception:
+                        _bowl_alerts = True
+                    if _bowl_alerts:
+                        announced = match["announced_achievements"]["bowling"].setdefault(bowler_id, set())
+                        if b["wickets"] in (3, 5) and b["wickets"] not in announced:
+                            announced.add(b["wickets"])
+                            _bowl_msgs = {3: "{p} picks up a 3-fer 🎯", 5: "FIVE-FOR 🖐️ {p} destroys the batting!"}
+                            caption = f"🏆 <b>Achievement!</b>\n<i>{_bowl_msgs[b['wickets']].format(p=_mention(bowler_id, match))}</i>"
+                            asyncio.create_task(_send_achievement_media(client, chat_id, f"BOWL_{b['wickets']}", caption))
 
-                    balls = b.get("bowling_balls", [])
-                    if len(balls) >= 3 and balls[-3:] == ["W", "W", "W"] and "HAT" not in announced:
-                        announced.add("HAT")
-                        asyncio.create_task(_send_achievement_media(client, chat_id, "HAT_TRICK", f"🎩 <b>HAT-TRICK!</b>\n<i>{_mention(bowler_id, match)} takes three in three 😱</i>"))
+                        balls = b.get("bowling_balls", [])
+                        if len(balls) >= 3 and balls[-3:] == ["W", "W", "W"] and "HAT" not in announced:
+                            announced.add("HAT")
+                            asyncio.create_task(_send_achievement_media(client, chat_id, "HAT_TRICK", f"🎩 <b>HAT-TRICK!</b>\n<i>{_mention(bowler_id, match)} takes three in three 😱</i>"))
 
             match["current_over_balls"].append("W")
             match["total_balls"] += 1
@@ -706,7 +730,12 @@ async def end_over(match):
         except Exception as e:
             print("❌ Over AI analysis failed:", e)
 
-    asyncio.create_task(_do_ai_summary())
+    try:
+        from database.group_settings import get_setting as _gs
+        if await _gs(chat_id, "ai_summary"):
+            asyncio.create_task(_do_ai_summary())
+    except Exception:
+        asyncio.create_task(_do_ai_summary())
 
     if completed_over >= match.get("overs", 0):
         from plugins.game.team.over_engine import end_innings
@@ -934,6 +963,16 @@ async def end_match(match, forced: bool = False):
         winner_key = "No Result"
         margin = "Stopped by host."
 
+    if winner_key == "Tie" and not forced:
+        try:
+            from database.group_settings import get_setting as _gs
+            from plugins.game.team.super_over import trigger_super_over
+            if await _gs(chat_id, "super_over"):
+                await trigger_super_over(client, match)
+                return
+        except Exception as _soe:
+            print(f"Super over trigger error: {_soe}")
+
     res_title = "🏏 𝗠𝗔𝗧𝗖𝗛 𝗖𝗢𝗠𝗣𝗟𝗘𝗧𝗘" if winner_key not in ("Tie", "No Result") else "🤝 𝗠𝗔𝗧𝗖𝗛 𝗧𝗜𝗘𝗗"
 
     try:
@@ -1005,6 +1044,22 @@ async def end_match(match, forced: bool = False):
 
         except Exception as e:
             print("❌ Post-match task error:", e)
+
+        try:
+            from database.group_settings import get_setting as _gs
+            if await _gs(chat_id, "auto_play_again"):
+                from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+                await client.send_message(
+                    chat_id,
+                    "🎮 <b>Want to play again?</b>\nStart a new match with /play!",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("▶️ Play Again", callback_data="mode_team"),
+                        InlineKeyboardButton("👤 Solo",       callback_data="mode_solo"),
+                    ]]),
+                )
+        except Exception as _pae:
+            print(f"Auto play again error: {_pae}")
 
     asyncio.create_task(post_match_extras())
     

@@ -242,6 +242,25 @@ async def userinfo(client, message):
         f"✅ Wins: {won} | ❌ Losses: {lost}\n\n"
         "🤝 <b>𝗣𝗔𝗥𝗧𝗡𝗘𝗥𝗦𝗛𝗜𝗣</b>\n"
         f"🏏 Best Partnership: {stats.get('best_partnership', 0)} runs\n"
+    )
+
+    try:
+        from database.venue_stats import get_best_venue
+        best_venue = await get_best_venue(uid)
+        if best_venue:
+            venue_name    = best_venue.get("chat_title", "Group")
+            venue_runs_v  = best_venue.get("runs", 0)
+            venue_wkts_v  = best_venue.get("wickets", 0)
+            venue_matches_v = best_venue.get("matches", 0)
+            caption += (
+                "\n🏟️ <b>𝗕𝗘𝗦𝗧 𝗩𝗘𝗡𝗨𝗘</b>\n"
+                f"📍 {venue_name}\n"
+                f"🏏 {venue_runs_v} runs  •  🎯 {venue_wkts_v} wkts  •  🎮 {venue_matches_v} matches\n"
+            )
+    except Exception:
+        pass
+
+    caption += (
         "────┈┄┄╌╌╌╌┄┄┈────\n"
         f"#CricketLegacy | {date.today()}"
     )
@@ -269,14 +288,16 @@ async def userinfo(client, message):
         await message.reply_photo(photo=PROFILE_IMG, caption=caption, parse_mode=ParseMode.HTML, reply_markup=_profile_buttons(uid))
 
 CATEGORIES = {
-    "runs": ("🏏 Most Runs", "runs"),
-    "wickets": ("🎯 Most Wickets", "wickets"),
-    "ducks": ("🦆 Highest Ducks", "ducks"),
-    "fifties": ("⭐ Most Fifties", "fifties"),
-    "centuries": ("🔥 Most Centuries", "centuries"),
-    "moms": ("🏅 Most MOMs", "moms"),
-    "best_captain": ("🧑‍✈️ Best Captain", "wins"),
-    "best_partnership": ("🤝 Best Partnership", "best_partnership"),
+    "runs":            ("🏏 Most Runs",          "runs"),
+    "wickets":         ("🎯 Most Wickets",        "wickets"),
+    "ducks":           ("🦆 Highest Ducks",       "ducks"),
+    "fifties":         ("⭐ Most Fifties",         "fifties"),
+    "centuries":       ("🔥 Most Centuries",      "centuries"),
+    "moms":            ("🏅 Most MOMs",           "moms"),
+    "best_captain":    ("🧑‍✈️ Best Captain",      "wins"),
+    "best_partnership":("🤝 Best Partnership",    "best_partnership"),
+    "venue_runs":      ("🏟️ Venue Run King",      "venue_runs"),
+    "venue_wickets":   ("🏟️ Venue Wicket King",   "venue_wickets"),
 }
 
 async def get_home_text(user):
@@ -318,8 +339,57 @@ async def build_rank_text(client, uid, category_key, offset=0):
     limit = 10
 
     await db.ensure_pool()
-    col = db.db["user_stats"]
     users_col = db.db["users"]
+
+    # ── Venue-based global leaderboard ────────────────────────────────────────
+    if category_key in ("venue_runs", "venue_wickets"):
+        real_col = "runs" if category_key == "venue_runs" else "wickets"
+        vcol = db.db["venue_stats"]
+        pipeline = [
+            {"$group": {
+                "_id": "$user_id",
+                "total": {"$sum": f"${real_col}"},
+                "matches": {"$sum": "$matches"},
+            }},
+            {"$sort": {"total": -1}},
+            {"$skip": offset},
+            {"$limit": limit},
+            {"$addFields": {"display_val": "$total", "user_id": "$_id"}},
+        ]
+        total = len(await vcol.distinct("user_id"))
+        top_players = await vcol.aggregate(pipeline).to_list(length=limit)
+
+        user_doc_vs = await vcol.find_one({"user_id": uid})
+        pos_text = "N/A"
+        if user_doc_vs:
+            user_total = (
+                await vcol.aggregate([
+                    {"$match": {"user_id": uid}},
+                    {"$group": {"_id": None, "t": {"$sum": f"${real_col}"}}},
+                ]).to_list(1)
+            )
+            u_val = user_total[0]["t"] if user_total else 0
+            above = len(await vcol.aggregate([
+                {"$group": {"_id": "$user_id", "t": {"$sum": f"${real_col}"}}},
+                {"$match": {"t": {"$gt": u_val}}},
+            ]).to_list(None))
+            pos_text = f"{above + 1}/{total}"
+
+        text = f"<b>{label}</b>\n🔹 Your Position: {pos_text}\n\n"
+        if not top_players:
+            return text + "<i>No data yet.</i>", 0
+
+        for i, row in enumerate(top_players, start=offset + 1):
+            uid_row = row.get("user_id") or row.get("_id")
+            u_doc = await users_col.find_one({"user_id": uid_row}, {"name": 1})
+            p_name = (u_doc or {}).get("name") or "Player"
+            val = int(row.get("display_val", 0) or 0)
+            text += f"{i}. <b>{p_name}</b> = <code>{val}</code> ({int(row.get('matches', 0))} matches)\n\n"
+
+        return text, total
+
+    # ── Standard leaderboard ──────────────────────────────────────────────────
+    col = db.db["user_stats"]
 
     if category_key == "best_captain":
         pipeline = [
@@ -380,6 +450,48 @@ def get_main_menu():
 async def ranks_command(client, message: Message):
     text = await get_home_text(message.from_user)
     await message.reply_photo(photo=LEADERBOARD_IMG, caption=text, reply_markup=get_main_menu())
+
+
+@Client.on_message(filters.command("grouprank") & filters.group)
+async def grouprank_command(client, message: Message):
+    chat_id    = message.chat.id
+    chat_title = message.chat.title or "This Group"
+    uid        = message.from_user.id
+    limit      = 10
+
+    try:
+        from database.venue_stats import get_venue_leaderboard
+        await db.ensure_pool()
+        users_col = db.db["users"]
+
+        runs_top = await get_venue_leaderboard(chat_id, "runs",    limit)
+        wkts_top = await get_venue_leaderboard(chat_id, "wickets", limit)
+
+        async def fmt_row(i, row):
+            u_doc = await users_col.find_one({"user_id": row["user_id"]}, {"name": 1})
+            p_name = (u_doc or {}).get("name") or "Player"
+            return f"{i}. <b>{p_name}</b> — <code>{row.get('runs', 0)}</code> runs, <code>{row.get('wickets', 0)}</code> wkts"
+
+        runs_lines = "\n".join([await fmt_row(i + 1, r) for i, r in enumerate(runs_top)]) or "<i>No data yet.</i>"
+        wkts_lines = "\n".join([
+            f"{i+1}. <b>{((await users_col.find_one({'user_id': r['user_id']}, {'name': 1})) or {}).get('name', 'Player')}</b> — <code>{r.get('wickets', 0)}</code> wkts"
+            for i, r in enumerate(wkts_top)
+        ]) or "<i>No data yet.</i>"
+
+        text = (
+            f"🏟️ <b>Group Leaderboard</b>\n"
+            f"📍 <b>{chat_title}</b>\n"
+            "────┈┄┄╌╌╌╌┄┄┈────\n\n"
+            f"🏏 <b>Top Run Scorers</b>\n{runs_lines}\n\n"
+            f"🎯 <b>Top Wicket Takers</b>\n{wkts_lines}\n"
+            "────┈┄┄╌╌╌╌┄┄┈────\n"
+            f"#GroupRanks | {date.today()}"
+        )
+        await message.reply_text(text, parse_mode=ParseMode.HTML)
+
+    except Exception as e:
+        await message.reply_text(f"⚠️ Could not fetch group rankings. Try again shortly.\n<code>{e}</code>", parse_mode=ParseMode.HTML)
+
 
 @Client.on_callback_query(filters.regex("^rankview:"))
 async def rank_view_callback(client, query: CallbackQuery):
