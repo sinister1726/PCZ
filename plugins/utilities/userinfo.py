@@ -452,7 +452,7 @@ async def ranks_command(client, message: Message):
     await message.reply_photo(photo=LEADERBOARD_IMG, caption=text, reply_markup=get_main_menu())
 
 
-@Client.on_message(filters.command("grouprank") & filters.group)
+@Client.on_message(filters.command("grank") & filters.group)
 async def grouprank_command(client, message: Message):
     chat_id    = message.chat.id
     chat_title = message.chat.title or "This Group"
