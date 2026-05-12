@@ -1,7 +1,7 @@
 from database.connection import db
 
 DEFAULTS = {
-    "super_over":         True,
+    "super_over":         False,
     "ai_summary":         True,
     "achievement_alerts": True,
     "auto_play_again":    True,
