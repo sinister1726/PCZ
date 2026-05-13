@@ -27,7 +27,7 @@ def _owner(uid: int) -> bool:
 
 # ─── Commands ─────────────────────────────────────────────────────────────────
 
-@Client.on_message(filters.command("permit") & filters.private)
+@Client.on_message(filters.command("permit"))
 async def permit_cmd(client: Client, message: Message):
     if not _owner(message.from_user.id):
         return await message.reply_text("⛔ Owner only.")
