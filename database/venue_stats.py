@@ -7,12 +7,19 @@ async def update_venue_stats(
     chat_title: str,
     runs: int,
     wickets: int,
+    fifties: int = 0,
+    centuries: int = 0,
+    balls_faced: int = 0,
 ) -> None:
     await db.ensure_pool()
     await db.db["venue_stats"].update_one(
         {"user_id": user_id, "chat_id": chat_id},
         {
-            "$inc": {"runs": runs, "wickets": wickets, "matches": 1},
+            "$inc": {
+                "runs": runs, "wickets": wickets, "matches": 1,
+                "fifties": fifties, "centuries": centuries,
+                "balls_faced": balls_faced,
+            },
             "$set": {"chat_title": chat_title},
             "$setOnInsert": {"user_id": user_id, "chat_id": chat_id},
         },

@@ -60,6 +60,24 @@ def _make_player_buttons(match, batting_team, cb_prefix, exclude_uid=None):
     return buttons
 
 
+def _auto_assign_so_roles(match: dict, batting_team: str, bowling_team: str):
+    """Auto-assign striker, non-striker, bowler from existing match rosters — no DM buttons."""
+    so          = match["super_over"]
+    teams       = match.get("teams", {})
+    bat_players = teams.get(batting_team, {}).get("players", [])
+    bow_players = teams.get(bowling_team, {}).get("players", [])
+    bat_cap     = teams.get(batting_team, {}).get("captain_id")
+    bow_cap     = teams.get(bowling_team, {}).get("captain_id")
+
+    striker     = bat_cap if bat_cap in bat_players else (bat_players[0] if bat_players else None)
+    non_striker = next((p for p in bat_players if p != striker), None)
+    bowler      = bow_cap if bow_cap in bow_players else (bow_players[0] if bow_players else None)
+
+    so["striker"][batting_team]     = striker
+    so["non_striker"][batting_team] = non_striker
+    so["bowler"][batting_team]      = bowler
+
+
 # ─── Entry ────────────────────────────────────────────────────────────────────
 
 async def trigger_super_over(client, match: dict):

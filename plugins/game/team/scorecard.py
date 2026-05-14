@@ -408,12 +408,16 @@ async def save_match_stats(match, winner_team):
                 chat_title = f"Group {chat_id}"
         if chat_id:
             for uid, p in players.items():
+                p_runs = p.get("runs", 0)
                 await update_venue_stats(
                     uid,
                     chat_id,
                     chat_title,
-                    p.get("runs", 0),
+                    p_runs,
                     p.get("wickets", 0),
+                    fifties=1 if 50 <= p_runs < 100 else 0,
+                    centuries=1 if p_runs >= 100 else 0,
+                    balls_faced=p.get("balls_faced", 0),
                 )
     except Exception as _ve:
         print(f"Venue stats save error: {_ve}")
