@@ -95,6 +95,15 @@ async def start_nexora():
     from plugins.utilities.nudge import start_nudge_task
     start_nudge_task(bot)
 
+    async def _premium_expiry_loop():
+        from database.premium import check_and_expire_all
+        while True:
+            await asyncio.sleep(3600)
+            await check_and_expire_all()
+
+    asyncio.create_task(_premium_expiry_loop())
+    print("⏰ Premium expiry checker active (hourly).")
+
     await idle()
 
     print("🛑 Shutting down...")

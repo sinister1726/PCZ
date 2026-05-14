@@ -5,9 +5,10 @@ Owner-only premium management commands.
 /revoke <group_id>          remove premium from a group
 /checkpremium [group_id]    show premium status
 
-Plans: basic (₹29)  standard (₹49)  pro (₹70)
+Plans: silver (₹30/28d)  •  gold (₹80/28d)
 """
 
+from datetime import datetime
 from pyrogram import Client, filters
 from pyrogram.types import (
     InlineKeyboardMarkup,
@@ -25,6 +26,20 @@ def _owner(uid: int) -> bool:
     return uid in Config.OWNER_IDS
 
 
+def _expiry_text(p: dict) -> str:
+    exp = p.get("expires_at")
+    if not exp:
+        return "No expiry set"
+    remaining = exp - datetime.utcnow()
+    days = remaining.days
+    if days < 0:
+        return "⚠️ Expired"
+    if days == 0:
+        hours = remaining.seconds // 3600
+        return f"⏳ Expires today ({hours}h left)"
+    return f"⏳ {days} day(s) remaining  •  {exp.strftime('%d %b %Y')}"
+
+
 # ─── Commands ─────────────────────────────────────────────────────────────────
 
 @Client.on_message(filters.command("permit"))
@@ -36,7 +51,9 @@ async def permit_cmd(client: Client, message: Message):
     if not args:
         return await message.reply_text(
             "Usage: <code>/permit &lt;group_id&gt; [plan]</code>\n\n"
-            "Plans: <code>basic</code> ₹29  •  <code>standard</code> ₹49  •  <code>pro</code> ₹70",
+            "Plans:\n"
+            "  <code>silver</code>  🥈 ₹30 / 28 days\n"
+            "  <code>gold</code>    🥇 ₹80 / 28 days",
             parse_mode=ParseMode.HTML,
         )
 
@@ -49,14 +66,14 @@ async def permit_cmd(client: Client, message: Message):
         plan = args[1].lower()
         if plan not in PLANS:
             return await message.reply_text(
-                "❌ Unknown plan.\nUse: <code>basic</code>, <code>standard</code>, or <code>pro</code>",
+                "❌ Unknown plan. Use: <code>silver</code> or <code>gold</code>",
                 parse_mode=ParseMode.HTML,
             )
         await _do_grant(message, chat_id, plan, message.from_user.id)
     else:
         buttons = [
             [InlineKeyboardButton(
-                f"{data['name']}  —  ₹{data['price']}",
+                f"{data['name']}  —  ₹{data['price']} / {data['duration']} days",
                 callback_data=f"pmg_{chat_id}_{key}",
             )]
             for key, data in PLANS.items()
@@ -115,13 +132,14 @@ async def checkpremium_cmd(client: Client, message: Message):
 
     p = await get_premium(chat_id)
     if p:
-        pd  = PLANS[p["plan"]]
-        feats = " • ".join(pd["features"])
+        pd    = PLANS.get(p["plan"], {})
+        feats = " • ".join(pd.get("features", []))
         await message.reply_text(
             f"✨ <b>Premium Active</b>\n"
             f"Group: <code>{chat_id}</code>\n"
-            f"Plan: <b>{pd['name']}</b>  (₹{pd['price']})\n"
-            f"Features: {feats}",
+            f"Plan: <b>{pd.get('name', p['plan'])}</b>  (₹{pd.get('price', '?')})\n"
+            f"Features: {feats}\n"
+            f"{_expiry_text(p)}",
             parse_mode=ParseMode.HTML,
         )
     else:
@@ -155,13 +173,16 @@ async def pmc_cb(client: Client, query: CallbackQuery):
 
 async def _do_grant(msg, chat_id: int, plan: str, granted_by: int, edit: bool = False):
     await grant_premium(chat_id, plan, granted_by)
-    pd    = PLANS[plan]
-    feats = " • ".join(pd["features"])
-    text  = (
+    pd      = PLANS[plan]
+    feats   = " • ".join(pd["features"])
+    from datetime import datetime, timedelta
+    exp_date = (datetime.utcnow() + timedelta(days=pd["duration"])).strftime("%d %b %Y")
+    text = (
         f"✅ <b>Premium Granted!</b>\n"
         f"Group: <code>{chat_id}</code>\n"
         f"Plan: <b>{pd['name']}</b>  (₹{pd['price']})\n"
-        f"Unlocks: <b>{feats}</b>"
+        f"Unlocks: <b>{feats}</b>\n"
+        f"⏳ Expires: <b>{exp_date}</b>  ({pd['duration']} days)"
     )
     if edit:
         try:

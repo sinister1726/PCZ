@@ -15,6 +15,8 @@ Callback scheme:
   gs_timeout_set_<secs>         set timeout to <secs>
 """
 
+import html as _html
+
 from pyrogram import Client, filters
 from pyrogram.types import (
     InlineKeyboardMarkup,
@@ -38,9 +40,9 @@ FREE_FEATURES = [
 ]
 
 PREMIUM_FEATURES = [
-    ("spam_free",        "🛡 Spam Free",      "basic"),
-    ("disabled_numbers", "🔲 Dis. Numbers",   "standard"),
-    ("edge_rule",        "⚠️ Edge Rule",       "pro"),
+    ("spam_free",        "🛡 Spam Free",      "silver"),
+    ("disabled_numbers", "🔲 Dis. Numbers",   "gold"),
+    ("edge_rule",        "⚠️ Edge Rule",       "gold"),
 ]
 
 TIMEOUT_OPTIONS = [
@@ -91,21 +93,21 @@ FEATURE_DESC = {
         "Prevents bowlers from sending the same number\n"
         "3 consecutive times in a row.\n\n"
         "Example: 4 → 4 → 4 is blocked. 4 → 4 → 5 is fine.\n\n"
-        "📦 Requires <b>Basic plan</b> or above."
+        "📦 Requires <b>🥈 Silver plan</b> or above."
     ),
     "disabled_numbers": (
         "🔲 <b>Disabled Numbers</b>  <i>(Premium)</i>\n\n"
         "Block up to 2 numbers (0–6) from the game entirely.\n"
         "Neither batters nor bowlers can use them.\n\n"
         "Great for custom game modes and tighter strategies.\n\n"
-        "📦 Requires <b>Standard plan</b> or above."
+        "📦 Requires <b>🥇 Gold plan</b>."
     ),
     "edge_rule": (
         "⚠️ <b>Edge Rule</b>  <i>(Premium)</i>\n\n"
         "Batter plays 3 consecutive 0s → warning DM sent.\n"
         "4th consecutive 0 → automatically out!\n\n"
         "Encourages active batting and punishes pure defence.\n\n"
-        "📦 Requires <b>Pro plan</b>."
+        "📦 Requires <b>🥇 Gold plan</b>."
     ),
     "ball_timeout": (
         "⏱ <b>Ball Timeout</b>  <i>(Premium)</i>\n\n"
@@ -113,14 +115,14 @@ FEATURE_DESC = {
         "Default: <b>1 minute</b>.\n\n"
         "Options: 30s · 1m · 2m · 2m 30s · 3m · 5m\n\n"
         "After the timer → warning, then -6 runs penalty.\n\n"
-        "📦 Requires <b>Basic plan</b> or above."
+        "📦 Requires <b>🥈 Silver plan</b> or above."
     ),
 }
 
 PLAN_LOCK_MSG = {
-    "basic":    "🔒 Unlock with <b>Basic Plan</b>.",
-    "standard": "🔒 Unlock with <b>Standard Plan</b>.",
-    "pro":      "🔒 Unlock with <b>Pro Plan</b>.",
+    "silver": "🔒 Unlock with <b>🥈 Silver Plan</b> (₹30/month).",
+    "gold":   "🔒 Unlock with <b>🥇 Gold Plan</b> (₹80/month).",
+    "basic":  "🔒 Unlock with <b>🥈 Silver Plan</b> (₹30/month).",
 }
 
 
@@ -370,6 +372,43 @@ async def gs_toggle_cb(client: Client, query: CallbackQuery):
 
     await set_group_setting(chat_id, feature, bool(value))
     await query.answer("✅ Setting updated!")
+
+    # ── Log setting change to GC ───────────────────────────────────────────
+    try:
+        from plugins.utilities.logger import LOG_GROUP_ID
+        chat  = query.message.chat
+        admin = query.from_user
+        if chat.username:
+            group_link = f"https://t.me/{chat.username}"
+        else:
+            clean_id   = str(chat.id).replace("-100", "")
+            group_link = f"https://t.me/c/{clean_id}/1"
+        feat_label = next(
+            (f[1] for f in FREE_FEATURES if f[0] == feature),
+            next((f[1] for f in PREMIUM_FEATURES if f[0] == feature), feature),
+        )
+        state_text   = "✅ Enabled" if value else "❌ Disabled"
+        admin_mention = (
+            f"<a href='tg://user?id={admin.id}'>"
+            f"{_html.escape(admin.first_name or 'Admin')}</a>"
+        )
+        await client.send_message(
+            LOG_GROUP_ID,
+            (
+                f"⚙️ <b>Setting Changed</b>\n"
+                f"──┈┄┄╌╌╌╌┄┄┈──\n"
+                f"💬 <b>Group:</b> "
+                f"<a href='{group_link}'>{_html.escape(chat.title or 'Group')}</a>\n"
+                f"👤 <b>Admin:</b> {admin_mention}\n"
+                f"🔧 <b>Setting:</b> {feat_label}\n"
+                f"📊 <b>Status:</b> {state_text}"
+            ),
+            parse_mode=ParseMode.HTML,
+            disable_web_page_preview=True,
+        )
+    except Exception:
+        pass
+
     text, markup = await _feature_panel(chat_id, feature)
     try:
         await query.message.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
