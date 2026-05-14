@@ -50,7 +50,10 @@ HTML_TEMPLATE = """
             const search = document.getElementById("search").value.toLowerCase();
             try {
                 const res = await fetch("/logs");
-                const logs = await res.json();
+                if (!res.ok) return;
+                const text = await res.text();
+                if (!text || !text.trim()) return;
+                const logs = JSON.parse(text);
                 const box = document.getElementById("logBox");
                 box.innerHTML = "";
                 logs.forEach(log => {
@@ -61,7 +64,7 @@ HTML_TEMPLATE = """
                     div.textContent = `[${log.time}] ${log.level} • ${log.message}`;
                     box.appendChild(div);
                 });
-            } catch (e) { console.error("Log fetch failed", e); }
+            } catch (e) { /* silently ignore transient fetch/parse errors */ }
         }
         setInterval(loadLogs, 2000);
         window.onload = loadLogs;
@@ -76,7 +79,10 @@ def index():
 
 @app.route("/logs")
 def get_logs():
-    return jsonify(list(LOGS))
+    try:
+        return jsonify(list(LOGS))
+    except Exception:
+        return jsonify([])
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)

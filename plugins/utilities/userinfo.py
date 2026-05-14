@@ -139,7 +139,10 @@ def _profile_buttons(uid: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton("🧬 Cricket DNA", callback_data=f"show_dna:{uid}"),
             InlineKeyboardButton("⚔️ 1v1 Stats", callback_data=f"show_duel:{uid}"),
-        ]
+        ],
+        [
+            InlineKeyboardButton("🏅 Personal Records", callback_data=f"show_rec:{uid}"),
+        ],
     ])
 
 
@@ -664,6 +667,86 @@ async def show_duel_callback(client, query: CallbackQuery):
             f"🦆 Ducks: <b>{ducks}</b>\n"
             "────┈┄┄╌╌╌╌┄┄┈────\n"
             "⚔️ <i>Duels sharpen your instincts!</i>"
+        )
+
+    back_btn = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔙 Back to Profile", callback_data=f"back_profile:{uid}")]
+    ])
+
+    try:
+        await query.message.edit_caption(caption=text, parse_mode=ParseMode.HTML, reply_markup=back_btn)
+    except Exception:
+        await query.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=back_btn)
+
+
+@Client.on_callback_query(filters.regex("^show_rec:"))
+async def show_records_callback(client, query: CallbackQuery):
+    await query.answer()
+    uid = int(query.data.split(":")[1])
+
+    try:
+        stats = await _get_user_stats(uid)
+    except Exception:
+        return await query.answer("DB error, try again.", show_alert=True)
+
+    try:
+        target = await client.get_users(uid)
+        display_name = target.first_name
+    except Exception:
+        display_name = "Player"
+
+    if not stats:
+        text = (
+            f"🏅 <b>Personal Records — {display_name}</b>\n\n"
+            "No records yet! Play some matches first. 🏏"
+        )
+    else:
+        runs        = int(stats.get("runs", 0))
+        bf          = int(stats.get("balls_faced", 0))
+        matches     = int(stats.get("matches", 0))
+        wickets     = int(stats.get("wickets", 0))
+        bb          = int(stats.get("balls_bowled", 0))
+        rc          = int(stats.get("runs_conceded", 0))
+        hs          = int(stats.get("highest_score", 0))
+        centuries   = int(stats.get("centuries", 0))
+        fifties     = int(stats.get("fifties", 0))
+        sixes       = int(stats.get("sixes", 0))
+        fours       = int(stats.get("fours", 0))
+        hat_tricks  = int(stats.get("hat_tricks", 0))
+        moms        = int(stats.get("moms", 0))
+        best_part   = int(stats.get("best_partnership", 0))
+        ducks       = int(stats.get("ducks", 0))
+
+        outs = matches - int(stats.get("not_outs", 0))
+        avg  = f"{runs / outs:.2f}" if outs > 0 else "—"
+        sr   = f"{runs / bf * 100:.1f}" if bf > 0 else "—"
+        econ = f"{rc / (bb / 6):.2f}" if bb > 0 else "—"
+        bowl_avg = f"{rc / wickets:.2f}" if wickets > 0 else "—"
+
+        text = (
+            f"🏅 <b>Personal Records</b>\n"
+            f"👤 <b>{display_name}</b>\n"
+            "────┈┄┄╌╌╌╌┄┄┈────\n\n"
+            "🏏 <b>𝗕𝗔𝗧𝗧𝗜𝗡𝗚 𝗕𝗘𝗦𝗧𝗦</b>\n"
+            f"🔥 Highest Score:   <b>{hs}</b>\n"
+            f"📈 Career Average:  <b>{avg}</b>\n"
+            f"⚡ Strike Rate:     <b>{sr}</b>\n"
+            f"💯 Centuries:       <b>{centuries}</b>\n"
+            f"⭐ Fifties:         <b>{fifties}</b>\n"
+            f"6️⃣ Total Sixes:     <b>{sixes:,}</b>\n"
+            f"4️⃣ Total Fours:     <b>{fours:,}</b>\n"
+            f"🦆 Ducks:           <b>{ducks}</b>\n\n"
+            "🎯 <b>𝗕𝗢𝗪𝗟𝗜𝗡𝗚 𝗕𝗘𝗦𝗧𝗦</b>\n"
+            f"⚾ Wickets Taken:   <b>{wickets}</b>\n"
+            f"🎯 Economy:         <b>{econ}</b>\n"
+            f"📊 Bowl Average:    <b>{bowl_avg}</b>\n"
+            f"🎩 Hat-Tricks:      <b>{hat_tricks}</b>\n\n"
+            "🌟 <b>𝗠𝗜𝗟𝗘𝗦𝗧𝗢𝗡𝗘𝗦</b>\n"
+            f"🏅 Man of Match:    <b>{moms}</b>\n"
+            f"🤝 Best Partnership:<b>{best_part}</b> runs\n"
+            f"🎮 Total Matches:   <b>{matches}</b>\n"
+            "────┈┄┄╌╌╌╌┄┄┈────\n"
+            "✨ <i>Keep playing to break your own records!</i>"
         )
 
     back_btn = InlineKeyboardMarkup([
