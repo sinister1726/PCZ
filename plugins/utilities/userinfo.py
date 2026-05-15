@@ -141,9 +141,6 @@ def _profile_buttons(uid: int) -> InlineKeyboardMarkup:
             InlineKeyboardButton("🧬 Cricket DNA", callback_data=f"show_dna:{uid}"),
             InlineKeyboardButton("⚔️ 1v1 Stats", callback_data=f"show_duel:{uid}"),
         ],
-        [
-            InlineKeyboardButton("🏅 Personal Records", callback_data=f"show_rec:{uid}"),
-        ],
     ])
 
 
