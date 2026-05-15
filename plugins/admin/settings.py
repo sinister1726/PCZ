@@ -1,9 +1,11 @@
 """
 /settings — per-group feature toggle panel (admins only).
 
-Free    : super_over, ai_summary, achievement_alerts, auto_play_again
-Premium : spam_free (Basic+), disabled_numbers (Standard+), edge_rule (Pro),
-          ball_timeout (Basic+)
+Free    : super_over, ai_summary, achievement_alerts, auto_play_again,
+          team_names, toss, show_scorecard
+Premium : spam_free (Silver+), disabled_numbers (Gold+), edge_rule (Gold+),
+          ball_timeout (Silver+), power_play (Silver+), over_limit (Silver+),
+          drs (Gold+)
 
 Callback scheme:
   gs_home                       main panel
@@ -13,6 +15,8 @@ Callback scheme:
   gs_dn_toggle_<n>              toggle number n (0-6)
   gs_timeout                    timeout picker panel
   gs_timeout_set_<secs>         set timeout to <secs>
+  gs_ol                         over-limit picker panel
+  gs_ol_set_<n>                 set over limit to <n>
 """
 
 import html as _html
@@ -37,12 +41,17 @@ FREE_FEATURES = [
     ("achievement_alerts", "🔔 Achievements"),
     ("auto_play_again",    "🔄 Play Again"),
     ("team_names",         "🏷 Team Names"),
+    ("toss",               "🪙 Toss"),
+    ("show_scorecard",     "📊 Scorecard"),
 ]
 
 PREMIUM_FEATURES = [
     ("spam_free",        "🛡 Spam Free",      "silver"),
     ("disabled_numbers", "🔲 Dis. Numbers",   "gold"),
     ("edge_rule",        "⚠️ Edge Rule",       "gold"),
+    ("power_play",       "⚡ Power Play",      "silver"),
+    ("over_limit",       "🎳 Over Limit",      "silver"),
+    ("drs",              "🔁 DRS",             "gold"),
 ]
 
 TIMEOUT_OPTIONS = [
@@ -54,30 +63,36 @@ TIMEOUT_OPTIONS = [
     (300, "5m"),
 ]
 
+OVER_LIMIT_OPTIONS = [1, 2, 3, 4, 5]
+
 FEATURE_DESC = {
     "super_over": (
         "⚡ <b>Super Over on Tie</b>\n\n"
         "When a match ends in a tie, a Super Over is triggered.\n"
-        "Each team bats 1 over with 2 batters (striker + non-striker).\n"
-        "1 wicket in hand — highest score wins!\n"
-        "Double-tie → match declared a Tie."
+        "Each team bats 1 over (6 balls) with 2 batters.\n"
+        "2 wickets allowed — highest score wins!\n"
+        "Double-tie → match declared a Tie.\n\n"
+        "🆓 <b>Free feature — default on.</b>"
     ),
     "ai_summary": (
         "🧠 <b>AI Over Summary</b>\n\n"
         "After every over our AI commentator delivers a sharp,\n"
         "funny 2–3 line analysis of what just happened.\n"
-        "Powered by Llama 3.1 70B via NVIDIA API."
+        "Powered by Llama 3.1 70B via NVIDIA API.\n\n"
+        "🆓 <b>Free feature — default on.</b>"
     ),
     "achievement_alerts": (
         "🔔 <b>Achievement Alerts</b>\n\n"
         "Real-time announcements in the group for:\n"
         "50s, 100s, 150s, 250s, 3-wicket hauls, 5-fors,\n"
-        "hat-tricks, ducks, and partnership milestones."
+        "hat-tricks, ducks, and partnership milestones.\n\n"
+        "🆓 <b>Free feature — default on.</b>"
     ),
     "auto_play_again": (
         "🔄 <b>Auto Play Again</b>\n\n"
         "After every match a 'Play Again?' prompt appears\n"
-        "in the group so players can quickly start a new game."
+        "in the group so players can quickly start a new game.\n\n"
+        "🆓 <b>Free feature — default on.</b>"
     ),
     "team_names": (
         "🏷 <b>Custom Team Names</b>\n\n"
@@ -87,6 +102,21 @@ FEATURE_DESC = {
         "Names appear in the match overview, result message,\n"
         "and everywhere Team A/B is normally shown.\n\n"
         "🆓 <b>Free feature — default off.</b>"
+    ),
+    "toss": (
+        "🪙 <b>Coin Toss</b>\n\n"
+        "Before each match the bot flips a coin in the group.\n"
+        "The winning captain chooses to <b>Bat</b> or <b>Bowl</b> first.\n\n"
+        "Makes every game feel like real cricket — no fixed batting order.\n\n"
+        "🆓 <b>Free feature — default off.</b>"
+    ),
+    "show_scorecard": (
+        "📊 <b>Auto Scorecard After Innings</b>\n\n"
+        "At the end of each innings the bot automatically posts\n"
+        "the full scorecard in the group — runs, balls, 4s, 6s,\n"
+        "wickets, strike rates, and bowling figures.\n\n"
+        "No need for anyone to type /score after the innings ends.\n\n"
+        "🆓 <b>Free feature — default on.</b>"
     ),
     "spam_free": (
         "🛡 <b>Spam Free Mode</b>  <i>(Premium)</i>\n\n"
@@ -117,6 +147,32 @@ FEATURE_DESC = {
         "After the timer → warning, then -6 runs penalty.\n\n"
         "📦 Requires <b>🥈 Silver plan</b> or above."
     ),
+    "power_play": (
+        "⚡ <b>Power Play Mode</b>  <i>(Premium)</i>\n\n"
+        "The first <b>2 overs</b> of each innings are a Power Play.\n\n"
+        "During Power Play:\n"
+        "• Any score of <b>4 or 6</b> is boosted by +1 (4→5, 6→7)\n"
+        "• Adds extra pressure on the bowler in the opening overs\n\n"
+        "A Power Play banner is shown in the group at the start.\n\n"
+        "📦 Requires <b>🥈 Silver plan</b> or above."
+    ),
+    "over_limit": (
+        "🎳 <b>Per-Bowler Over Limit</b>  <i>(Premium)</i>\n\n"
+        "Limit how many overs a single bowler can bowl per innings.\n\n"
+        "Options: 1, 2, 3, 4, or 5 overs max.\n"
+        "If a bowler hits their limit the captain must pick a new one.\n\n"
+        "Forces captains to rotate their attack — more strategy!\n\n"
+        "📦 Requires <b>🥈 Silver plan</b> or above."
+    ),
+    "drs": (
+        "🔁 <b>DRS — Decision Review System</b>  <i>(Premium)</i>\n\n"
+        "Each team gets <b>1 review per innings</b>.\n\n"
+        "When a batter is given OUT they can immediately type\n"
+        "<b>/review</b> to challenge the decision.\n"
+        "The bot re-rolls: 50% chance the decision is overturned.\n\n"
+        "Adds a thrilling new layer of drama to dismissals!\n\n"
+        "📦 Requires <b>🥇 Gold plan</b>."
+    ),
 }
 
 PLAN_LOCK_MSG = {
@@ -141,7 +197,6 @@ async def _main_panel(chat_id: int):
     premium   = await get_premium(chat_id)
     plan_name = PLANS.get(premium["plan"], {}).get("name", premium["plan"].title()) if premium else None
 
-    # Header
     plan_line = (
         f"✨ <b>Plan:</b> {plan_name}"
         if plan_name else
@@ -152,7 +207,7 @@ async def _main_panel(chat_id: int):
         "━━━━━━━━━━━━━━━━━━━━━\n"
         f"{plan_line}\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "🆓 <b>Free Features</b>    💎 <b>Premium Features</b>"
+        "🆓 <b>Free Features</b>"
     )
 
     buttons = []
@@ -167,33 +222,49 @@ async def _main_panel(chat_id: int):
             row.append(InlineKeyboardButton(f"{status} {label}", callback_data=f"gs_view_{key}"))
         buttons.append(row)
 
-    # Separator label row (non-clickable trick — use spacer)
     buttons.append([InlineKeyboardButton("─── 💎 Premium ───", callback_data="gs_noop")])
 
-    # Premium: spam_free + disabled_numbers on one row
-    spam_unlocked = premium and plan_unlocked(premium, "silver")
-    dn_unlocked   = premium and plan_unlocked(premium, "gold")
-    edge_unlocked = premium and plan_unlocked(premium, "gold")
-    to_unlocked   = premium and plan_unlocked(premium, "silver")
+    spam_unlocked  = premium and plan_unlocked(premium, "silver")
+    dn_unlocked    = premium and plan_unlocked(premium, "gold")
+    edge_unlocked  = premium and plan_unlocked(premium, "gold")
+    to_unlocked    = premium and plan_unlocked(premium, "silver")
+    pp_unlocked    = premium and plan_unlocked(premium, "silver")
+    ol_unlocked    = premium and plan_unlocked(premium, "silver")
+    drs_unlocked   = premium and plan_unlocked(premium, "gold")
 
     # Row: spam_free | disabled_numbers
     spam_status = ("✅" if settings.get("spam_free", False) else "❌") if spam_unlocked else "🔒"
-    dn           = settings.get("disabled_numbers", [])
-    dn_str       = f"[{', '.join(map(str, dn))}]" if dn else "[none]"
-    dn_status    = f"🔲 {dn_str}" if dn_unlocked else "🔒"
+    dn          = settings.get("disabled_numbers", [])
+    dn_str      = f"[{', '.join(map(str, dn))}]" if dn else "[none]"
+    dn_status   = f"🔲 {dn_str}" if dn_unlocked else "🔒"
     buttons.append([
-        InlineKeyboardButton(f"{spam_status} 🛡 Spam Free",    callback_data="gs_view_spam_free"),
-        InlineKeyboardButton(f"{dn_status} 🔲 Numbers",        callback_data="gs_dn"),
+        InlineKeyboardButton(f"{spam_status} 🛡 Spam Free",   callback_data="gs_view_spam_free"),
+        InlineKeyboardButton(f"{dn_status} Numbers",          callback_data="gs_dn"),
     ])
 
     # Row: edge_rule | ball_timeout
-    edge_status = ("✅" if settings.get("edge_rule", False) else "❌") if edge_unlocked else "🔒"
+    edge_status  = ("✅" if settings.get("edge_rule", False) else "❌") if edge_unlocked else "🔒"
     cur_timeout  = settings.get("ball_timeout", 60)
     to_label     = _timeout_label(cur_timeout)
     to_status    = f"⏱ {to_label}" if to_unlocked else "🔒 ⏱ Timeout"
     buttons.append([
-        InlineKeyboardButton(f"{edge_status} ⚠️ Edge Rule",    callback_data="gs_view_edge_rule"),
-        InlineKeyboardButton(f"{to_status}",                   callback_data="gs_timeout"),
+        InlineKeyboardButton(f"{edge_status} ⚠️ Edge Rule",   callback_data="gs_view_edge_rule"),
+        InlineKeyboardButton(f"{to_status}",                  callback_data="gs_timeout"),
+    ])
+
+    # Row: power_play | over_limit
+    pp_status  = ("✅" if settings.get("power_play", False) else "❌") if pp_unlocked else "🔒"
+    ol_val     = settings.get("over_limit", 0)
+    ol_display = f"{ol_val}ov" if ol_val and ol_unlocked else ("🔒" if not ol_unlocked else "off")
+    buttons.append([
+        InlineKeyboardButton(f"{pp_status} ⚡ Power Play",    callback_data="gs_view_power_play"),
+        InlineKeyboardButton(f"🎳 Limit: {ol_display}",       callback_data="gs_ol"),
+    ])
+
+    # Row: drs (full width)
+    drs_status = ("✅" if settings.get("drs", False) else "❌") if drs_unlocked else "🔒"
+    buttons.append([
+        InlineKeyboardButton(f"{drs_status} 🔁 DRS Review System", callback_data="gs_view_drs"),
     ])
 
     buttons.append([InlineKeyboardButton("✖ Close", callback_data="gs_close")])
@@ -204,7 +275,8 @@ async def _main_panel(chat_id: int):
 async def _feature_panel(chat_id: int, feature: str):
     settings        = await get_group_settings(chat_id)
     premium         = await get_premium(chat_id)
-    is_prem_feature = feature in {f[0] for f in PREMIUM_FEATURES} or feature == "ball_timeout"
+    prem_keys       = {f[0] for f in PREMIUM_FEATURES} | {"ball_timeout"}
+    is_prem_feature = feature in prem_keys
     req_plan        = next(
         (f[2] for f in PREMIUM_FEATURES if f[0] == feature),
         "basic" if feature == "ball_timeout" else None,
@@ -285,7 +357,6 @@ async def _timeout_panel(chat_id: int):
         "━━━━━━━━━━━━━━━━━━━━━"
     )
 
-    # Build 2-per-row option buttons
     rows = []
     pairs = [TIMEOUT_OPTIONS[i:i+2] for i in range(0, len(TIMEOUT_OPTIONS), 2)]
     for pair in pairs:
@@ -297,6 +368,42 @@ async def _timeout_panel(chat_id: int):
     rows.append([InlineKeyboardButton("🔙 Back", callback_data="gs_home")])
 
     return text, InlineKeyboardMarkup(rows)
+
+
+async def _over_limit_panel(chat_id: int):
+    premium  = await get_premium(chat_id)
+    cur_ol   = await get_setting(chat_id, "over_limit") or 0
+    unlocked = premium and plan_unlocked(premium, "silver")
+
+    if not unlocked:
+        text = (
+            f"{FEATURE_DESC['over_limit']}\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"{PLAN_LOCK_MSG['silver']}"
+        )
+        return text, InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="gs_home")]])
+
+    cur_label = f"{cur_ol} over(s) max" if cur_ol else "Off (no limit)"
+    text = (
+        "🎳 <b>Per-Bowler Over Limit</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Tap to set the max overs one bowler can bowl.\n"
+        "Set to <b>Off</b> to disable.\n\n"
+        f"🕐 <b>Current:</b> {cur_label}\n"
+        "━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+    opt_row = []
+    for n in OVER_LIMIT_OPTIONS:
+        mark = "✅ " if n == cur_ol else ""
+        opt_row.append(InlineKeyboardButton(f"{mark}{n}ov", callback_data=f"gs_ol_set_{n}"))
+    off_mark = "✅ " if cur_ol == 0 else ""
+    buttons = [
+        opt_row,
+        [InlineKeyboardButton(f"{off_mark}Off (no limit)", callback_data="gs_ol_set_0")],
+        [InlineKeyboardButton("🔙 Back", callback_data="gs_home")],
+    ]
+    return text, InlineKeyboardMarkup(buttons)
 
 
 # ─── Command ──────────────────────────────────────────────────────────────────
@@ -363,7 +470,8 @@ async def gs_toggle_cb(client: Client, query: CallbackQuery):
     value   = int(parts[-1])
     feature = "_".join(parts[2:-1])
 
-    is_prem = feature in {f[0] for f in PREMIUM_FEATURES} or feature == "ball_timeout"
+    prem_keys = {f[0] for f in PREMIUM_FEATURES} | {"ball_timeout"}
+    is_prem   = feature in prem_keys
     if is_prem:
         req_plan = next((f[2] for f in PREMIUM_FEATURES if f[0] == feature), "basic")
         premium  = await get_premium(chat_id)
@@ -373,7 +481,7 @@ async def gs_toggle_cb(client: Client, query: CallbackQuery):
     await set_group_setting(chat_id, feature, bool(value))
     await query.answer("✅ Setting updated!")
 
-    # ── Log setting change to GC ───────────────────────────────────────────
+    # ── Log setting change ─────────────────────────────────────────────────
     try:
         from plugins.utilities.logger import LOG_GROUP_ID
         chat  = query.message.chat
@@ -387,7 +495,7 @@ async def gs_toggle_cb(client: Client, query: CallbackQuery):
             (f[1] for f in FREE_FEATURES if f[0] == feature),
             next((f[1] for f in PREMIUM_FEATURES if f[0] == feature), feature),
         )
-        state_text   = "✅ Enabled" if value else "❌ Disabled"
+        state_text    = "✅ Enabled" if value else "❌ Disabled"
         admin_mention = (
             f"<a href='tg://user?id={admin.id}'>"
             f"{_html.escape(admin.first_name or 'Admin')}</a>"
@@ -483,7 +591,7 @@ async def gs_timeout_set_cb(client: Client, query: CallbackQuery):
     if not premium or not plan_unlocked(premium, "basic"):
         return await query.answer("🔒 Basic plan required!", show_alert=True)
 
-    secs = int(query.data.split("_")[-1])
+    secs  = int(query.data.split("_")[-1])
     valid = [s for s, _ in TIMEOUT_OPTIONS]
     if secs not in valid:
         return await query.answer("Invalid option.", show_alert=True)
@@ -491,6 +599,44 @@ async def gs_timeout_set_cb(client: Client, query: CallbackQuery):
     await set_group_setting(chat_id, "ball_timeout", secs)
     await query.answer(f"✅ Timeout set to {_timeout_label(secs)}!")
     text, markup = await _timeout_panel(chat_id)
+    try:
+        await query.message.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
+
+
+@Client.on_callback_query(filters.regex("^gs_ol$"))
+async def gs_ol_cb(client: Client, query: CallbackQuery):
+    chat_id = query.message.chat.id
+    if not await is_group_admin(client, chat_id, query.from_user.id):
+        return await query.answer("Admins only!", show_alert=True)
+    text, markup = await _over_limit_panel(chat_id)
+    try:
+        await query.message.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
+    await query.answer()
+
+
+@Client.on_callback_query(filters.regex(r"^gs_ol_set_\d+$"))
+async def gs_ol_set_cb(client: Client, query: CallbackQuery):
+    chat_id = query.message.chat.id
+    if not await is_group_admin(client, chat_id, query.from_user.id):
+        return await query.answer("Admins only!", show_alert=True)
+
+    premium = await get_premium(chat_id)
+    if not premium or not plan_unlocked(premium, "silver"):
+        return await query.answer("🔒 Silver plan required!", show_alert=True)
+
+    n     = int(query.data.split("_")[-1])
+    valid = OVER_LIMIT_OPTIONS + [0]
+    if n not in valid:
+        return await query.answer("Invalid option.", show_alert=True)
+
+    await set_group_setting(chat_id, "over_limit", n)
+    label = f"{n} over(s) max" if n else "Off (no limit)"
+    await query.answer(f"✅ Over limit set to: {label}!")
+    text, markup = await _over_limit_panel(chat_id)
     try:
         await query.message.edit_text(text, reply_markup=markup, parse_mode=ParseMode.HTML)
     except Exception:
