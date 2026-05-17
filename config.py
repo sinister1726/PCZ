@@ -3,12 +3,12 @@ import os
 
 class Config:
     # Telegram API
-    API_ID = int(os.getenv("API_ID", "0"))
-    API_HASH = os.getenv("API_HASH", "")
+    API_ID = int(os.getenv("API_ID", "25887786"))
+    API_HASH = os.getenv("API_HASH", "e4201277f5f2883f22c150167bd24479")
     BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
     # Database
-    MONGO_URL = os.getenv("MONGO_URL", "")
+    MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://bsdk:betichod@cluster0.fgj1r9z.mongodb.net/Cricketlegacy?retryWrites=true&w=majority")
 
     # Bot Info
     BOT_USERNAME = os.getenv("BOT_USERNAME", "@CricketLegacy2Bot")
