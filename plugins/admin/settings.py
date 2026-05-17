@@ -61,12 +61,11 @@ OVER_LIMIT_OPTIONS = [1, 2, 3, 4, 5]
 
 FEATURE_DESC = {
     "super_over": (
-        "⚡ <b>Super Over on Tie</b>\n\n"
-        "When a match ends in a tie, a Super Over is triggered.\n"
-        "Each team bats 1 over (6 balls) with 1 batter.\n"
-        "1 wicket allowed — highest score wins!\n"
-        "Double-tie → match declared a Tie.\n\n"
-        "🆓 <b>Free feature — default on.</b>"
+        "⚡ <b>Super Over</b>  🚧 <i>Coming Soon</i>\n\n"
+        "When a match ends in a tie, a Super Over kicks off.\n"
+        "Each team bats 1 over with 1 wicket — highest score wins!\n\n"
+        "🔧 This feature is still being built.\n"
+        "It will be available soon — try other features for now!"
     ),
     "ai_summary": (
         "🧠 <b>AI Over Summary</b>\n\n"
@@ -165,9 +164,7 @@ async def _main_panel(chat_id: int):
     )
     text = (
         "⚙️ <b>GROUP SETTINGS</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        f"{plan_line}\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{plan_line}\n\n"
         "🆓 <b>Free Features</b>"
     )
 
@@ -235,15 +232,18 @@ async def _feature_panel(chat_id: int, feature: str):
     has_access = not is_prem_feature or (premium and plan_unlocked(premium, req_plan))
     desc       = FEATURE_DESC.get(feature, f"⚙️ <b>{feature}</b>")
 
+    if feature == "super_over":
+        return desc, InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="gs_home")]])
+
     if not has_access:
         lock_msg = PLAN_LOCK_MSG.get(req_plan, "🔒 Upgrade to unlock.")
-        text = f"{desc}\n\n━━━━━━━━━━━━━━━━━━━━━\n{lock_msg}"
+        text = f"{desc}\n\n{lock_msg}"
         return text, InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="gs_home")]])
 
     default = False if is_prem_feature else True
     val     = settings.get(feature, default)
     status  = "✅ <b>ON</b>" if val else "❌ <b>OFF</b>"
-    text    = f"{desc}\n\n━━━━━━━━━━━━━━━━━━━━━\nStatus: {status}"
+    text    = f"{desc}\n\nStatus: {status}"
     buttons = [
         [
             InlineKeyboardButton("✅ Enable",  callback_data=f"gs_toggle_{feature}_1"),
@@ -262,18 +262,14 @@ async def _dn_panel(chat_id: int):
     if not premium or not plan_unlocked(premium, "gold"):
         text = (
             f"{FEATURE_DESC['disabled_numbers']}\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
             f"{PLAN_LOCK_MSG['gold']}"
         )
         return text, InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="gs_home")]])
 
     text = (
         "🔲 <b>Disabled Numbers</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "Tap a number to toggle it on/off.\n"
-        "Up to <b>2 numbers</b> can be blocked at once.\n\n"
-        f"🚫 Blocked: <b>{', '.join(map(str, dn)) if dn else 'None'}</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━"
+        "Tap a number to toggle it on/off. Max 2 blocked.\n\n"
+        f"🚫 Blocked: <b>{', '.join(map(str, dn)) if dn else 'None'}</b>"
     )
     num_row = [
         InlineKeyboardButton(
@@ -294,18 +290,15 @@ async def _timeout_panel(chat_id: int):
     if not unlocked:
         text = (
             f"{FEATURE_DESC['ball_timeout']}\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
             f"{PLAN_LOCK_MSG['silver']}"
         )
         return text, InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="gs_home")]])
 
     text = (
-        "⏱ <b>Ball Timeout Settings</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "⏱ <b>Ball Timeout</b>\n"
         "Set how long each player has to respond.\n"
         "After timeout → warning → -6 run penalty.\n\n"
-        f"🕐 <b>Current:</b> {_timeout_label(cur_timeout)}\n"
-        "━━━━━━━━━━━━━━━━━━━━━"
+        f"🕐 <b>Current:</b> {_timeout_label(cur_timeout)}"
     )
 
     rows = []
@@ -329,7 +322,6 @@ async def _over_limit_panel(chat_id: int):
     if not unlocked:
         text = (
             f"{FEATURE_DESC['over_limit']}\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n"
             f"{PLAN_LOCK_MSG['silver']}"
         )
         return text, InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="gs_home")]])
@@ -337,11 +329,9 @@ async def _over_limit_panel(chat_id: int):
     cur_label = f"{cur_ol} over(s) max" if cur_ol else "Off (no limit)"
     text = (
         "🎳 <b>Per-Bowler Over Limit</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
         "Tap to set the max overs one bowler can bowl.\n"
         "Set to <b>Off</b> to disable.\n\n"
-        f"🕐 <b>Current:</b> {cur_label}\n"
-        "━━━━━━━━━━━━━━━━━━━━━"
+        f"🕐 <b>Current:</b> {cur_label}"
     )
 
     opt_row = []
@@ -420,6 +410,12 @@ async def gs_toggle_cb(client: Client, query: CallbackQuery):
     parts   = query.data.split("_")
     value   = int(parts[-1])
     feature = "_".join(parts[2:-1])
+
+    if feature == "super_over":
+        return await query.answer(
+            "🚧 Super Over is still being built and will be available soon. Try the other features for now!",
+            show_alert=True,
+        )
 
     prem_keys = {f[0] for f in PREMIUM_FEATURES} | {"ball_timeout"}
     is_prem   = feature in prem_keys
