@@ -1,7 +1,7 @@
 """
 /settings — per-group feature toggle panel (admins only).
 
-Free    : super_over, ai_summary, achievement_alerts, auto_play_again, team_names
+Free    : super_over, ai_summary, achievement_alerts, auto_play_again, team_names, auto_pin_members
 Premium : spam_free (Silver+), disabled_numbers (Gold+), edge_rule (Gold+),
           ball_timeout (Silver+), over_limit (Silver+)
 
@@ -39,6 +39,7 @@ FREE_FEATURES = [
     ("achievement_alerts", "🔔 Achievements"),
     ("auto_play_again",    "🔄 Play Again"),
     ("team_names",         "🏷 Team Names"),
+    ("auto_pin_members",   "📌 Auto-Pin List"),
 ]
 
 PREMIUM_FEATURES = [
@@ -132,6 +133,13 @@ FEATURE_DESC = {
         "If a bowler hits their limit the captain must pick a new one.\n\n"
         "Forces captains to rotate their attack — more strategy!\n\n"
         "📦 Requires <b>🥈 Silver plan</b> or above."
+    ),
+    "auto_pin_members": (
+        "📌 <b>Auto-Pin Members List</b>\n\n"
+        "When /members or /teams is used with captains set,\n"
+        "the members list card gets automatically pinned in the group.\n\n"
+        "Keeps the squad info visible at the top for everyone.\n\n"
+        "🆓 <b>Free feature — default on.</b>"
     ),
 }
 
@@ -390,14 +398,24 @@ async def gs_home_cb(client: Client, query: CallbackQuery):
 
 @Client.on_callback_query(filters.regex("^gs_premium_help$"))
 async def gs_premium_help_cb(client: Client, query: CallbackQuery):
-    await query.answer(
-        "💎 To get Premium:\n\n"
-        "1️⃣ Send your query to @LegacyContact_Bot\n"
-        "2️⃣ Mention your preferred plan (Silver / Gold)\n"
-        "3️⃣ Ask the owner to permit your group\n\n"
-        "Plans unlock features like Spam Free, Edge Rule, Ball Timeout & more!",
-        show_alert=True,
+    text = (
+        "💎 <b>How to get Premium</b>\n\n"
+        "1️⃣ Open <b>@LegacyContact_Bot</b> and send your query\n"
+        "2️⃣ Mention the plan you want:\n"
+        "   • 🥈 <b>Silver</b> — Spam Free, Ball Timeout, Over Limit\n"
+        "   • 🥇 <b>Gold</b> — All Silver + Disabled Numbers + Edge Rule\n"
+        "3️⃣ Ask the owner to activate your group\n\n"
+        "Once approved, your group unlocks premium features automatically."
     )
+    try:
+        await query.message.edit_text(
+            text,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data="gs_home")]]),
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception:
+        pass
+    await query.answer()
 
 
 @Client.on_callback_query(filters.regex(r"^gs_view_\w+$"))

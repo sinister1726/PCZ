@@ -10,6 +10,7 @@ DEFAULTS = {
     "disabled_numbers":   [],
     "ball_timeout":       60,
     "team_names":         False,
+    "auto_pin_members":   True,
 }
 
 _cache: dict = {}

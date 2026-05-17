@@ -23,6 +23,7 @@ from database.games import (
     get_shift_count,
     increment_shift,
 )
+from database.group_settings import get_setting
 
 from utils.permissions import host_only, not_restricted
 from utils.guards import is_group_admin, get_match
@@ -36,6 +37,14 @@ NAME_FONT = "Assets/namefont.ttf"
 MEMBERS_THUMB_COUNTER = {}
 AVATAR_CACHE = {}
 CACHE_TTL = 600
+
+
+async def _auto_delete_msg(msg, delay: int):
+    try:
+        await asyncio.sleep(delay)
+        await msg.delete()
+    except Exception:
+        pass
 
 async def ensure_user_exists(user):
     await db.db["users"].update_one(
@@ -448,6 +457,7 @@ async def members(client, message):
                 match["members_thumb_sent"] = True
 
     refresh_markup = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refresh", callback_data="refresh_members")]])
+    auto_pin = await get_setting(chat_id, "auto_pin_members")
 
     try:
         if send_thumb:
@@ -463,15 +473,20 @@ async def members(client, message):
                     group_name=message.chat.title or "Cricket Arena"
                 )
                 sent = await message.reply_photo(photo=thumb, caption=text, reply_markup=refresh_markup)
-                try: await sent.pin(disable_notification=True)
-                except ChatAdminRequired: pass
+                if auto_pin:
+                    try:
+                        await sent.pin(disable_notification=True)
+                    except ChatAdminRequired:
+                        pass
             else:
-                await message.reply_text(text)
+                sent = await message.reply_text(text)
         else:
-            await message.reply_photo(photo=MEMBERS_IMAGE, caption=text, reply_markup=refresh_markup)
+            sent = await message.reply_photo(photo=MEMBERS_IMAGE, caption=text, reply_markup=refresh_markup)
     except Exception as e:
         print(f"[MEMBERS ERROR]: {e}")
-        await message.reply_text(text)
+        sent = await message.reply_text(text)
+
+    asyncio.create_task(_auto_delete_msg(sent, 300))
 
 @Client.on_callback_query(filters.regex("^refresh_members$"))
 async def refresh_members_callback(client, cq):
