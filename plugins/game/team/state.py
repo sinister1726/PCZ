@@ -243,13 +243,15 @@ async def bowler_dm_handler(client, message):
     except Exception:
         pass
 
-    # ── Spam Free Mode check ──────────────────────────────────────────────────
+    # ── Spam Free Mode check (bowler only, resets each over) ─────────────────
     try:
         from database.group_settings import get_setting as _gs2
         from database.premium import can_use_feature
         if await _gs2(chat_id, "spam_free") and await can_use_feature(chat_id, "spam_free"):
-            bowler_hist = match.setdefault("current_bowler_numbers", [])
-            if len(bowler_hist) >= 2 and bowler_hist[-1] == bowl_num and bowler_hist[-2] == bowl_num:
+            if len(match.get("current_over_balls", [])) == 0:
+                match["bowler_spam"] = {}
+            hist = match.setdefault("bowler_spam", {}).setdefault(uid, [])
+            if len(hist) >= 2 and hist[-1] == bowl_num and hist[-2] == bowl_num:
                 return await message.reply_text(
                     f"🛡️ <b>Spam Free Mode!</b>\n"
                     f"You can't bowl <b>{bowl_num}</b> three times in a row!\n"
@@ -263,7 +265,7 @@ async def bowler_dm_handler(client, message):
     match["last_active"] = time.time()
     match["last_bowl"] = bowl_num
     match["bowled"] = True
-    match.setdefault("current_bowler_numbers", []).append(bowl_num)
+    match.setdefault("bowler_spam", {}).setdefault(uid, []).append(bowl_num)
 
     if "timeouts" not in match:
         match["timeouts"] = {
@@ -364,22 +366,6 @@ async def batter_handler(client, message):
     except Exception:
         pass
 
-    # ── Spam Free Mode check (batter) ─────────────────────────────────────────
-    try:
-        from database.group_settings import get_setting as _gsf
-        from database.premium import can_use_feature
-        if await _gsf(chat_id, "spam_free") and await can_use_feature(chat_id, "spam_free"):
-            batter_hist = match.setdefault("current_batter_numbers", [])
-            if len(batter_hist) >= 2 and batter_hist[-1] == bat_num and batter_hist[-2] == bat_num:
-                return await message.reply_text(
-                    f"🛡️ <b>Spam Free Mode!</b>\n"
-                    f"You can't play <b>{bat_num}</b> three times in a row!\n"
-                    "Try a different shot.",
-                    parse_mode=ParseMode.HTML,
-                    quote=True,
-                )
-    except Exception:
-        pass
 
     # ── Hat-trick ball restriction ────────────────────────────────────────────
     over_balls = match.get("current_over_balls", [])
