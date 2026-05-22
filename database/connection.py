@@ -13,7 +13,10 @@ class Database:
             try:
                 print(f"🗄️ Connecting to MongoDB... (attempt {attempt}/{retries})")
                 self.client = AsyncIOMotorClient(Config.MONGO_URL)
-                self.db = self.client.get_default_database()
+                try:
+                    self.db = self.client.get_default_database()
+                except Exception:
+                    self.db = self.client["Cricketlegacy"]
                 await self.client.admin.command("ping")
                 print("✅ MongoDB Connected.")
                 return
