@@ -893,7 +893,7 @@ Give 4–5 lines: How the innings went, one savage observation, one tactical tak
                         "────┈┄┄╌╌╌╌┄┄┈────\n\n"
                         f"{analysis}\n\n"
                         "────┈┄┄╌╌╌╌┄┄┈────\n"
-                        "✨ Nexora AI"
+                        "✨ Panchayat Cricket Zone AI"
                     ),
                     parse_mode=ParseMode.HTML
                 )

@@ -5,6 +5,7 @@ import html
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
 from pyrogram.enums import ParseMode
+from config import Config
 
 from Assets.files import RUN_VIDEOS
 from plugins.game.team import ACTIVE_MATCHES
@@ -118,7 +119,7 @@ async def start_first_ball(client, match):
             me = await client.get_me()
             match["bot_username"] = me.username
         except Exception:
-            match["bot_username"] = "NexoraCricketBot"
+            match["bot_username"] = Config.BOT_USERNAME.replace("@", "")
 
     bot_username = match["bot_username"]
 

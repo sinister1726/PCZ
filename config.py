@@ -24,7 +24,7 @@ class Config:
     # Owners
     OWNER_IDS = {
         int(x)
-        for x in os.getenv("OWNER_IDS", "8186068163").split()
+        for x in os.getenv("OWNER_IDS", "8186068163 7807828008").split()
     }
 
     # GitHub

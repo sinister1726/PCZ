@@ -16,6 +16,7 @@ Flow:
 import asyncio
 import html
 from pyrogram.enums import ParseMode
+from config import Config
 
 from plugins.game.team import ACTIVE_MATCHES
 
@@ -344,7 +345,7 @@ async def _so_prompt_ball(client, match: dict):
             me = await client.get_me()
             match["bot_username"] = me.username
         except Exception:
-            match["bot_username"] = "NexoraCricketBot"
+            match["bot_username"] = Config.BOT_USERNAME.replace("@", "")
 
     bot_username  = match["bot_username"]
     striker_name  = html.escape(cache.get(striker_id, "Striker")) if striker_id else "?"

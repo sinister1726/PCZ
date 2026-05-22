@@ -433,7 +433,7 @@ async def members(client, message):
         f"╰⊚ {team_activity('B')}\n"
         f"{format_team_list('B')}\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"
-        "✨ #CricketArena | @NexoraSystems"
+        "✨ #CricketArena | Panchayat Cricket Zone"
     )
     
     send_thumb = False
@@ -595,7 +595,7 @@ async def refresh_members_callback(client, cq):
         f"╰⊚ {team_activity('B')}\n"
         f"{format_team_list('B')}\n"
         "────┈┄┄╌╌╌╌┄┄┈────\n"
-        "✨ #CricketArena | @NexoraSystems"
+        "✨ #CricketArena | Panchayat Cricket Zone"
     )
 
     await message.edit_caption(
