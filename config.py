@@ -8,7 +8,7 @@ class Config:
     BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
     # Database
-    MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://bsdk:betichod@cluster0.fgj1r9z.mongodb.net/Cricketlegacy?retryWrites=true&w=majority")
+    MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://clone1legacy:Vinit.123@clone1.sj89zbp.mongodb.net/?appName=clone1")
 
     # Bot Info
     BOT_USERNAME = os.getenv("BOT_USERNAME", "@CricketLegacy2Bot")
